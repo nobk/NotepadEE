@@ -40,15 +40,9 @@ IDR_RT_MANIFEST         RT_MANIFEST             "..\\res\\Notepad4.exe.manifest"
 
 // Icon with lowest ID value placed first to ensure application icon
 // remains consistent on all systems.
-#if NP2_ENABLE_HIDPI_IMAGE_RESOURCE
 IDR_MAINWND             ICON                    "..\\res\\Notepad4.ico"
 IDI_RUN                 ICON                    "..\\res\\Run.ico"
 IDI_STYLES              ICON                    "..\\res\\Styles.ico"
-#else
-IDR_MAINWND             ICON                    "..\\res\\Notepad4_min.ico"
-IDI_RUN                 ICON                    "..\\res\\Run_min.ico"
-IDI_STYLES              ICON                    "..\\res\\Styles_min.ico"
-#endif
 
 //#if !NP2_ENABLE_APP_LOCALIZATION_DLL
 /////////////////////////////////////////////////////////////////////////////
@@ -63,7 +57,6 @@ IDB_PREV16              BITMAP                  "..\\res\\Prev16.bmp"
 IDB_PICK                BITMAP                  "..\\res\\Pick.bmp"
 IDB_ENCODING16          BITMAP                  "..\\res\\Encoding16.bmp"
 
-#if NP2_ENABLE_HIDPI_IMAGE_RESOURCE
 IDB_TOOLBAR24           BITMAP                  "..\\res\\Toolbar24.bmp"
 IDB_TOOLBAR32           BITMAP                  "..\\res\\Toolbar32.bmp"
 IDB_TOOLBAR40           BITMAP                  "..\\res\\Toolbar40.bmp"
@@ -88,18 +81,13 @@ IDB_ENCODING24          BITMAP                  "..\\res\\Encoding24.bmp"
 IDB_ENCODING32          BITMAP                  "..\\res\\Encoding32.bmp"
 IDB_ENCODING40          BITMAP                  "..\\res\\Encoding40.bmp"
 IDB_ENCODING48          BITMAP                  "..\\res\\Encoding48.bmp"
-#endif // NP2_ENABLE_HIDPI_IMAGE_RESOURCE
 
 /////////////////////////////////////////////////////////////////////////////
 //
 // Cursor
 //
 
-#if NP2_ENABLE_HIDPI_IMAGE_RESOURCE
 IDC_COPY                CURSOR                  "..\\res\\Copy.cur"
-#else
-IDC_COPY                CURSOR                  "..\\res\\Copy_min.cur"
-#endif
 
 //#endif // NP2_ENABLE_APP_LOCALIZATION_DLL
 
@@ -600,9 +588,7 @@ BEGIN
 			MENUITEM "S&how Toolbar\tCtrl+F11",		IDM_VIEW_TOOLBAR
 			MENUITEM "Customi&ze Toolbar...",		IDM_VIEW_CUSTOMIZE_TOOLBAR
 			MENUITEM "&Auto Scale Toolbar",			IDM_VIEW_AUTO_SCALE_TOOLBAR
-#if NP2_ENABLE_HIDPI_IMAGE_RESOURCE
 			MENUITEM "Use Lar&ge Toolbar",			IDM_VIEW_USE_LARGE_TOOLBAR
-#endif
 			MENUITEM "Show Stat&usbar\tShift+F11",	IDM_VIEW_STATUSBAR
 			MENUITEM SEPARATOR
 			MENUITEM "&Transparent Mode\tCtrl+0",	IDM_VIEW_TRANSPARENT
@@ -816,9 +802,7 @@ BEGIN
 		MENUITEM "Show &Toolbar",				IDM_VIEW_TOOLBAR
 		MENUITEM "&Customize Toolbar...",		IDM_VIEW_CUSTOMIZE_TOOLBAR
 		MENUITEM "&Auto Scale Toolbar",			IDM_VIEW_AUTO_SCALE_TOOLBAR
-#if NP2_ENABLE_HIDPI_IMAGE_RESOURCE
 		MENUITEM "Use &Large Toolbar",			IDM_VIEW_USE_LARGE_TOOLBAR
-#endif
 		MENUITEM "Show &Statusbar",				IDM_VIEW_STATUSBAR
 	END
 	POPUP "+"
@@ -1026,6 +1010,8 @@ BEGIN
     VK_OEM_PLUS,    IDM_VIEW_ZOOMIN,            VIRTKEY, CONTROL, NOINVERT
     VK_OEM_PLUS,    CMD_INCREASENUM,            VIRTKEY, CONTROL, ALT, NOINVERT
     VK_RETURN,      CMD_CTRLENTER,              VIRTKEY, SHIFT, CONTROL, NOINVERT
+    VK_RETURN,      CMD_ENTER_RETURN,           VIRTKEY, NOINVERT
+    VK_RETURN,      CMD_SHIFTENTER,             VIRTKEY, SHIFT, NOINVERT
     //VK_RIGHT,       IDM_EDIT_NAVIGATE_FORWARD,  VIRTKEY, ALT, NOINVERT
     VK_SPACE,       IDM_EDIT_SELECTWORD,        VIRTKEY, CONTROL, ALT, NOINVERT
     VK_SPACE,       IDM_EDIT_SELECTLINE,        VIRTKEY, SHIFT, CONTROL, NOINVERT
@@ -2148,4 +2134,3 @@ END
 #include "Notepad4.ver"
 /////////////////////////////////////////////////////////////////////////////
 #endif    // not APSTUDIO_INVOKED
-

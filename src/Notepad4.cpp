@@ -35,6 +35,7 @@
 #include "Helpers.h"
 #include "Notepad4.h"
 #include "Edit.h"
+#include "ExtendExpr.h"
 #include "Styles.h"
 #include "Dialogs.h"
 #include "resource.h"
@@ -325,6 +326,7 @@ static HMODULE hResDLL;
 LANGID uiLanguage;
 static UINT languageMenu;
 #endif
+bool bEnableExtendExpr = true;
 
 //=============================================================================
 //
@@ -610,6 +612,12 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	hResDLL = LoadLocalizedResourceDLL(uiLanguage, WC_NOTEPAD4 L".dll");
 	if (hResDLL) {
 		g_hInstance = hInstance = hResDLL;
+	} else if (uiLanguage != LANG_USER_DEFAULT) {
+		// Locale DLL not found (e.g. user deleted the locale folder after
+		// merging resources into the EXE). Set the thread UI language to
+		// match the user's language selection so that LoadString and other
+		// resource APIs find the merged resources by exact match.
+		SetThreadUILanguage(uiLanguage);
 	}
 #endif
 
@@ -1543,6 +1551,18 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
 		SciCall_SetMultipleSelection((iSelectOption & SelectOption_EnableMultipleSelection));
 	} break;
 
+	case APPM_SELCHARCOUNT: {
+		// 工作线程完成统计后的回调
+		const unsigned int seq = static_cast<unsigned int>(wParam);
+		// acquire-load：确保看到工作线程 release-store 之前的所有写入
+		if (seq == g_selCharCountResult.completedSeqNo.load(std::memory_order_acquire)
+			&& seq == g_selCharCountResult.currentSeqNo.load(std::memory_order_relaxed)) {
+			// 强制刷新状态栏的 Selection 区域
+			cachedStatusItem.updateMask |= (1 << StatusItem_Selection);
+			UpdateStatusbar();
+		}
+	} break;
+
 	default:
 		if (umsg == msgTaskbarCreated) {
 			if (!IsWindowVisible(hwnd)) {
@@ -1892,11 +1912,7 @@ void CreateBars(HWND hwnd, HINSTANCE hInstance) noexcept {
 
 	bool internalBitmap = false;
 	const int scale = iAutoScaleToolbar;
-#if NP2_ENABLE_HIDPI_IMAGE_RESOURCE
 	const UINT dpi = (scale > USER_DEFAULT_SCREEN_DPI) ? (g_uCurrentDPI + scale - USER_DEFAULT_SCREEN_DPI) : g_uCurrentDPI;
-#else
-	const int dpi = g_uCurrentDPI;
-#endif
 	// Add normal Toolbar Bitmap
 	HBITMAP hbmp = nullptr;
 	if (tchToolbarBitmap != nullptr) {
@@ -2550,9 +2566,7 @@ void MsgInitMenu(HWND hwnd, WPARAM wParam, LPARAM lParam) noexcept {
 	CheckCmd(hmenu, IDM_VIEW_TOOLBAR, bShowToolbar);
 	EnableCmd(hmenu, IDM_VIEW_CUSTOMIZE_TOOLBAR, bShowToolbar);
 	CheckCmd(hmenu, IDM_VIEW_AUTO_SCALE_TOOLBAR, iAutoScaleToolbar);
-#if NP2_ENABLE_HIDPI_IMAGE_RESOURCE
 	CheckCmd(hmenu, IDM_VIEW_USE_LARGE_TOOLBAR, iAutoScaleToolbar > USER_DEFAULT_SCREEN_DPI);
-#endif
 	CheckCmd(hmenu, IDM_VIEW_STATUSBAR, bShowStatusbar);
 #if NP2_ENABLE_APP_LOCALIZATION_DLL
 	CheckMenuRadioItem(hmenu, IDM_LANG_USER_DEFAULT, IDM_LANG_LAST_LANGUAGE, languageMenu, MF_BYCOMMAND);
@@ -4122,7 +4136,6 @@ LRESULT MsgCommand(HWND hwnd, WPARAM wParam, LPARAM lParam) {
 		MsgThemeChanged(hwnd, 0, 0);
 		break;
 
-#if NP2_ENABLE_HIDPI_IMAGE_RESOURCE
 	case IDM_VIEW_USE_LARGE_TOOLBAR:
 		if (iAutoScaleToolbar >= USER_DEFAULT_SCREEN_DPI && iAutoScaleToolbar < USER_DEFAULT_SCREEN_DPI*2) {
 			iAutoScaleToolbar += USER_DEFAULT_SCREEN_DPI/2;
@@ -4131,7 +4144,6 @@ LRESULT MsgCommand(HWND hwnd, WPARAM wParam, LPARAM lParam) {
 		}
 		MsgThemeChanged(hwnd, 0, 0);
 		break;
-#endif
 
 	case IDM_VIEW_STATUSBAR:
 		bShowStatusbar = !bShowStatusbar;
@@ -4634,6 +4646,16 @@ LRESULT MsgCommand(HWND hwnd, WPARAM wParam, LPARAM lParam) {
 		SystemIntegrationDlg(hwnd);
 		break;
 
+	case CMD_ENTER_RETURN:
+		CallExtendExpr(false, false);
+		SciCall_NewLine();
+		break;
+
+    case CMD_SHIFTENTER:
+		if (!CallExtendExpr(true, false))
+			SciCall_NewLine();
+		break;
+
 	default: {
 		if (LOWORD(wParam) >= IDM_LEXER_TEXTFILE && LOWORD(wParam) < IDM_LEXER_LEXER_COUNT) {
 			Style_SetLexerByLangIndex(LOWORD(wParam));
@@ -4699,6 +4721,11 @@ LRESULT MsgNotify(HWND hwnd, WPARAM wParam, LPARAM lParam) {
 						} else {
 							editMarkAll.MarkAll((scn->updated & SC_UPDATE_CONTENT), bMarkOccurrences);
 						}
+					}
+
+					// 异步启动选中文本字数统计（仅中文菜单下启用）
+					if (IsSelCharCountLangActive(languageMenu)) {
+						StartSelCharCountAsync(hwndMain);
 					}
 				} else if (scn->updated & SC_UPDATE_CONTENT) {
 					// cachedStatusItem.updateMask is already set in SCN_MODIFIED.
@@ -4771,6 +4798,10 @@ LRESULT MsgNotify(HWND hwnd, WPARAM wParam, LPARAM lParam) {
 					if (autoCompletionConfig.iCompleteOption & (AutoCompletionOption_CloseTags | AutoCompletionOption_CompleteWord)) {
 						EditAutoCloseXMLTag();
 					}
+					return 0;
+				}
+				if (ch == '?') {
+					if (CallExtendExpr(false, true))
 					return 0;
 				}
 				// Auto close braces/quotes, see GenerateAutoInsertMask() in tools/GenerateTable.py
@@ -6611,6 +6642,17 @@ void UpdateStatusbar() noexcept {
 	}
 
 	items[index] = start;
+
+	// 异步字数统计结果有效时，覆盖 StatusItem_Selection 区域
+	if (IsSelCharCountLangActive(languageMenu)
+		&& g_selCharCountResult.completedSeqNo.load(std::memory_order_acquire) != 0
+		&& g_selCharCountResult.completedSeqNo.load(std::memory_order_acquire) == g_selCharCountResult.currentSeqNo.load(std::memory_order_relaxed)) {
+		// 确保与当前选中范围匹配（快照时记录的范围）
+		if (iSelStart == g_selCharCountResult.selStart && iSelEnd == g_selCharCountResult.selEnd) {
+			items[StatusItem_Selection] = g_selCharCountResult.tchFormatted;
+		}
+	}
+
 	memcpy(AsVoidPointer(&items[StatusItem_Lexer]), AsVoidPointer(&cachedStatusItem.pszLexerName), (StatusItem_Zoom - StatusItem_Lexer)*sizeof(LPCWSTR));
 	items[StatusItem_Zoom] = cachedStatusItem.tchZoom;
 	items[StatusItem_DocSize] = tchDocSize;

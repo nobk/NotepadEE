@@ -151,7 +151,7 @@ EXIT /B
 ECHO.
 TITLE Building Notepad4 with MSVC - %~1 "%~2|%~3"...
 CD /D %~dp0
-"MSBuild.exe" /nologo Notepad4.sln /target:Notepad4;%~1 /property:Configuration=%~2;Platform=%~3^ /consoleloggerparameters:Verbosity=minimal /maxcpucount /nodeReuse:true
+"MSBuild.exe" /nologo Notepad4.sln /target:%~1 /property:Configuration=%~2;Platform=%~3^ /consoleloggerparameters:Verbosity=minimal /maxcpucount /nodeReuse:true
 IF %ERRORLEVEL% NEQ 0 CALL :SUBMSG "ERROR" "Compilation failed!"
 EXIT /B
 

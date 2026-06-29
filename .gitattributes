@@ -3,3 +3,77 @@
 *.sh	text eol=lf
 *.bat	text eol=crlf
 *.ini	text working-tree-encoding=UTF-16LE-BOM eol=CRLF
+
+# 自动处理换行符
+* text=auto
+
+# ============================================
+# Visual Studio 解决方案和项目文件 - 必须 CRLF + BOM
+# ============================================
+
+# 解决方案文件
+*.sln       text eol=crlf working-tree-encoding=UTF-8
+
+# C++ 项目文件
+*.vcxproj           text eol=crlf working-tree-encoding=UTF-8
+*.vcxproj.filters   text eol=crlf working-tree-encoding=UTF-8
+*.vcxproj.user      text eol=crlf working-tree-encoding=UTF-8
+
+# C# 项目文件
+*.csproj    text eol=crlf working-tree-encoding=UTF-8
+*.vbproj    text eol=crlf working-tree-encoding=UTF-8
+
+# 其他 MSBuild 项目文件
+*.proj      text eol=crlf working-tree-encoding=UTF-8
+*.props     text eol=crlf working-tree-encoding=UTF-8
+*.targets   text eol=crlf working-tree-encoding=UTF-8
+
+# 资源文件
+*.resx      text eol=crlf working-tree-encoding=UTF-8
+
+# 配置文件
+*.config    text eol=crlf working-tree-encoding=UTF-8
+*.settings  text eol=crlf working-tree-encoding=UTF-8
+
+# ============================================
+# 源代码文件 - CRLF，通常无 BOM
+# ============================================
+
+# C/C++
+*.c         text eol=crlf
+*.cpp       text eol=crlf
+*.h         text eol=crlf
+*.hpp       text eol=crlf
+
+# C#
+*.cs        text eol=crlf
+
+# ============================================
+# 二进制文件 - 禁止 Git 修改
+# ============================================
+
+*.exe       binary
+*.dll       binary
+*.lib       binary
+*.pdb       binary
+*.obj       binary
+*.res       binary
+*.ico       binary
+*.png       binary
+*.jpg       binary
+*.gif       binary
+*.bmp       binary
+*.zip       binary
+*.7z        binary
+*.pdf       binary
+
+# ============================================
+# 其他文本文件
+# ============================================
+
+*.md        text eol=lf
+*.txt       text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.json      text eol=lf
+*.xml       text eol=lf

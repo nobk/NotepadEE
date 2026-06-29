@@ -345,6 +345,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
 	hResDLL = LoadLocalizedResourceDLL(uiLanguage, WC_MATEPATH L".dll");
 	if (hResDLL) {
 		g_hInstance = hInstance = hResDLL;
+	} else if (uiLanguage != LANG_USER_DEFAULT) {
+		// Locale DLL not found; set thread UI language so that
+		// merged EXE resources are found by exact language match.
+		SetThreadUILanguage(uiLanguage);
 	}
 #endif
 
@@ -911,11 +915,7 @@ void CreateBars(HWND hwnd, HINSTANCE hInstance) noexcept {
 
 	bool internalBitmap = false;
 	const int scale = iAutoScaleToolbar;
-#if NP2_ENABLE_HIDPI_IMAGE_RESOURCE
 	const UINT dpi = (scale > USER_DEFAULT_SCREEN_DPI) ? (g_uCurrentDPI + scale - USER_DEFAULT_SCREEN_DPI) : g_uCurrentDPI;
-#else
-	const UINT dpi = g_uCurrentDPI;
-#endif
 	// Add normal Toolbar Bitmap
 	HBITMAP hbmp = nullptr;
 	if (tchToolbarBitmap != nullptr) {
@@ -1199,9 +1199,7 @@ void MsgInitMenu(HWND hwnd, WPARAM wParam, LPARAM lParam) {
 	CheckCmd(hmenu, IDM_VIEW_TOOLBAR, bShowToolbar);
 	EnableCmd(hmenu, IDM_VIEW_CUSTOMIZETB, bShowToolbar);
 	CheckCmd(hmenu, IDM_VIEW_AUTO_SCALE_TOOLBAR, iAutoScaleToolbar);
-#if NP2_ENABLE_HIDPI_IMAGE_RESOURCE
 	CheckCmd(hmenu, IDM_VIEW_USE_LARGE_TOOLBAR, iAutoScaleToolbar > USER_DEFAULT_SCREEN_DPI);
-#endif
 	CheckCmd(hmenu, IDM_VIEW_STATUSBAR, bShowStatusbar);
 	CheckCmd(hmenu, IDM_VIEW_DRIVEBOX, bShowDriveBox);
 
@@ -1746,7 +1744,6 @@ LRESULT MsgCommand(HWND hwnd, WPARAM wParam, LPARAM lParam) {
 		MsgThemeChanged(hwnd, 0, 0);
 		break;
 
-#if NP2_ENABLE_HIDPI_IMAGE_RESOURCE
 	case IDM_VIEW_USE_LARGE_TOOLBAR:
 		if (iAutoScaleToolbar >= USER_DEFAULT_SCREEN_DPI && iAutoScaleToolbar < USER_DEFAULT_SCREEN_DPI*2) {
 			iAutoScaleToolbar += USER_DEFAULT_SCREEN_DPI/2;
@@ -1755,7 +1752,6 @@ LRESULT MsgCommand(HWND hwnd, WPARAM wParam, LPARAM lParam) {
 		}
 		MsgThemeChanged(hwnd, 0, 0);
 		break;
-#endif
 
 	case IDM_VIEW_STATUSBAR:
 		bShowStatusbar = !bShowStatusbar;

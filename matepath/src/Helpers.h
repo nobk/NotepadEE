@@ -290,7 +290,6 @@ int SystemMetricsForDpi(int nIndex, UINT dpi) noexcept;
 BOOL AdjustWindowRectForDpi(LPRECT lpRect, DWORD dwStyle, DWORD dwExStyle, UINT dpi) noexcept;
 #endif
 
-#if defined(NP2_ENABLE_HIDPI_IMAGE_RESOURCE) && NP2_ENABLE_HIDPI_IMAGE_RESOURCE
 inline int GetBitmapResourceIdForDPI(int resourceId, UINT dpi) noexcept {
 	if (dpi > USER_DEFAULT_SCREEN_DPI + USER_DEFAULT_SCREEN_DPI/4) {
 		int scale = (dpi + USER_DEFAULT_SCREEN_DPI/4 - 1) / (USER_DEFAULT_SCREEN_DPI/2);
@@ -302,10 +301,6 @@ inline int GetBitmapResourceIdForDPI(int resourceId, UINT dpi) noexcept {
 inline int GetBitmapResourceIdForCurrentDPI(int resourceId) noexcept {
 	return GetBitmapResourceIdForDPI(resourceId, g_uCurrentDPI);
 }
-#else
-#define GetBitmapResourceIdForDPI(resourceId, dpi)		(resourceId)
-#define GetBitmapResourceIdForCurrentDPI(resourceId)	(resourceId)
-#endif
 
 // https://docs.microsoft.com/en-us/windows/desktop/Memory/comparing-memory-allocation-methods
 // https://blogs.msdn.microsoft.com/oldnewthing/20120316-00/?p=8083/
