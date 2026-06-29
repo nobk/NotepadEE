@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="AVX2Debug|x64">
@@ -584,11 +584,17 @@
     <ClCompile Include="..\..\scintilla\win32\SurfaceD2D.cxx" />
     <ClCompile Include="..\..\scintilla\win32\SurfaceGDI.cxx" />
     <ClCompile Include="..\..\src\Bridge.cpp" />
+    <ClCompile Include="..\..\src\Cntchr.cpp">
+      <AdditionalOptions Condition="!$(Configuration.Contains('LLVM'))">/constexpr:steps 8000000 %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
     <ClCompile Include="..\..\src\Dialogs.cpp" />
     <ClCompile Include="..\..\src\Dlapi.cpp" />
     <ClCompile Include="..\..\src\Edit.cpp" />
     <ClCompile Include="..\..\src\EditAutoC.cpp" />
     <ClCompile Include="..\..\src\EditEncoding.cpp" />
+    <ClCompile Include="..\..\src\ExtendExpr.cpp">
+      <AdditionalOptions Condition="$(Configuration.EndsWith('LLVMRelease'))">-Wno-undef</AdditionalOptions>
+    </ClCompile>
     <ClCompile Include="..\..\src\Helpers.cpp" />
     <ClCompile Include="..\..\src\Notepad4.cpp" />
     <ClCompile Include="..\..\src\Styles.cpp" />
@@ -675,6 +681,10 @@
     <ClCompile Include="..\..\src\EditLexers\stlXML.cpp" />
     <ClCompile Include="..\..\src\EditLexers\stlYAML.cpp" />
     <ClCompile Include="..\..\src\EditLexers\stlZig.cpp" />
+    <ClCompile Include="..\..\src\tinyexpr-plusplus\tinyexpr.cpp">
+      <DisableSpecificWarnings>4702</DisableSpecificWarnings>
+      <AdditionalOptions Condition="$(Configuration.EndsWith('LLVMRelease'))">-Wno-nan-infinity-disabled %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\scintilla\include\GraphicUtils.h" />
@@ -745,19 +755,25 @@
     <ClInclude Include="..\..\scintilla\win32\PlatWin.h" />
     <ClInclude Include="..\..\scintilla\win32\SurfaceD2D.h" />
     <ClInclude Include="..\..\scintilla\win32\WinTypes.h" />
+    <ClInclude Include="..\..\src\Cntchr.h" />
+    <ClInclude Include="..\..\src\CmdProc.hpp" />
     <ClInclude Include="..\..\src\compiler.h" />
     <ClInclude Include="..\..\src\config.h" />
+    <ClInclude Include="..\..\src\ctre\ctre.hpp" />
     <ClInclude Include="..\..\src\Dialogs.h" />
     <ClInclude Include="..\..\src\Dlapi.h" />
     <ClInclude Include="..\..\src\Edit.h" />
     <ClInclude Include="..\..\src\EditLexer.h" />
     <ClInclude Include="..\..\src\EditLexers/EditStyle.h" />
     <ClInclude Include="..\..\src\EditLexers/EditStyleX.h" />
+    <ClInclude Include="..\..\src\ExtendExpr.h" />
+    <ClInclude Include="..\..\src\ExtendExpr_impl.hpp" />
     <ClInclude Include="..\..\src\Helpers.h" />
     <ClInclude Include="..\..\src\Notepad4.h" />
     <ClInclude Include="..\..\src\Resource.h" />
     <ClInclude Include="..\..\src\SciCall.h" />
     <ClInclude Include="..\..\src\Styles.h" />
+    <ClInclude Include="..\..\src\tinyexpr-plusplus\tinyexpr.h" />
     <ClInclude Include="..\..\src\Version.h" />
     <ClInclude Include="..\..\src\VersionRev.h" />
   </ItemGroup>

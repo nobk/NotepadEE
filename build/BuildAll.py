@@ -14,10 +14,9 @@ localeDir = os.path.abspath('../locale')
 notepad4_rc = os.path.abspath('../src/Notepad4.rc')
 matepath_rc = os.path.abspath('../matepath/src/matepath.rc')
 
-activeLocaleList = ['i18n', 'en', 'de', 'fr', 'it', 'ja', 'ko', 'pl', 'ru', 'zh-Hans', 'zh-Hant']
+activeLocaleList = ['i18n',]
 defaultConfig = {
 	'NP2_ENABLE_CUSTOMIZE_TOOLBAR_LABELS': 0,
-	'NP2_ENABLE_HIDPI_IMAGE_RESOURCE': 1,
 
 	'NP2_ENABLE_DOT_LOG_FEATURE': 0,
 
@@ -27,10 +26,8 @@ defaultConfig = {
 	'NP2_ENABLE_LOCALIZE_STYLE_NAME': 1,
 }
 
-def get_locale_override_config(locale, hd):
+def get_locale_override_config(locale):
 	override = {}
-	if not hd:
-		override['NP2_ENABLE_HIDPI_IMAGE_RESOURCE'] = 0
 	if locale != 'i18n':
 		override['NP2_ENABLE_APP_LOCALIZATION_DLL'] = 0
 	if locale == 'en':
@@ -198,20 +195,21 @@ def build_locale_project(arch):
 	command = f'call build.bat Build {arch} Release'
 	run_command_in_folder(command, localeDir)
 
-def make_release_artifact(locale, suffix='', hd=False):
+def make_release_artifact(locale):
 	app_version = buildEnv['app_version']
 	zipDir = buildEnv['temp_zip_dir']
 	outDir = os.path.join(buildFolder, 'bin', 'Release')
 	archList = ['ARM64', 'AVX2', 'Win32', 'x64', 'AVX512']
-	if hd:
-		archList.remove('Win32')
 	for arch in archList:
 		folder = os.path.join(outDir, arch)
 		notepad4_exe = os.path.join(folder, 'Notepad4.exe')
 		matepath_exe = os.path.join(folder, 'matepath.exe')
+		mergelang_exe = os.path.join(folder, 'mergelang.exe')
 		if os.path.isfile(notepad4_exe) and os.path.isfile(matepath_exe):
 			shutil.copyfile(notepad4_exe, os.path.join(zipDir, 'Notepad4.exe'))
 			shutil.copyfile(matepath_exe, os.path.join(zipDir, 'matepath.exe'))
+			if os.path.isfile(mergelang_exe):
+				shutil.copyfile(mergelang_exe, os.path.join(zipDir, 'mergelang.exe'))
 			target = os.path.join(zipDir, 'locale')
 			if os.path.exists(target):
 				shutil.rmtree(target)
@@ -219,29 +217,22 @@ def make_release_artifact(locale, suffix='', hd=False):
 				path = os.path.join(folder, 'locale')
 				if os.path.isdir(path):
 					shutil.copytree(path, target, copy_function=shutil.copyfile)
-			name = f'Notepad4_{suffix + locale}_{arch}_{app_version}.zip'
+			name = f'Notepad4_{locale}_{arch}_{app_version}.zip'
 			print('make:', name)
 			path = os.path.join(buildFolder, name)
 			zip_folder_inner(zipDir, path)
 		else:
 			print(f'{locale} {arch} build failure')
 
-def build_release_artifact(hd, suffix=''):
+def build_release_artifact():
 	for locale in activeLocaleList:
-		print('build:', hd, locale)
-		override = get_locale_override_config(locale, hd)
+		print('build:', locale)
+		override = get_locale_override_config(locale)
 		update_config_file(override)
-		if locale in ('i18n', 'en'):
-			arch = 'No32bit' if hd else 'all'
-			build_main_project(arch)
-			if locale == 'i18n':
-				build_locale_project(arch)
-		else:
-			copy_back_localized_resources(locale)
-			arch = 'No32bit' if hd else 'all'
-			build_main_project(arch)
-		make_release_artifact(locale, suffix, hd)
-	copy_back_localized_resources('en')
+		arch = 'all'
+		build_main_project(arch)
+		build_locale_project(arch)
+		make_release_artifact(locale)
 
 def build_all_release_artifact():
 	print('project folder:', projectDir)
@@ -249,8 +240,7 @@ def build_all_release_artifact():
 	print('locale folder:', localeDir)
 	startTime = time.perf_counter()
 	prepare_build_environment()
-	build_release_artifact(True, 'HD_')
-	build_release_artifact(False)
+	build_release_artifact()
 	clean_build_temporary()
 	endTime = time.perf_counter()
 	print('total build time:', format_duration(endTime - startTime))
