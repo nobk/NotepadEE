@@ -62,6 +62,7 @@ for t in tests:
 #include <string_view>
 #include <thread>
 #include <atomic>
+#include <stop_token>
 #include <vector>
 
 #include "ExtendExpr.h"
@@ -256,29 +257,27 @@ bool CallExtendExpr(bool bShiftDown, bool noEnter) {
 
 SelCharCountResult g_selCharCountResult;
 
-namespace {
+static std::stop_source s_stopSource;
 
-struct SelCharCountInternal {
-	std::atomic<bool>	cancel{false};
-
-	// 以下字段仅在工作线程内写入，不对外暴露
-	size_t				chinese{0};
-	size_t				punctuation{0};
-	size_t				nonChineseNonSpace{0};
-	size_t				space{0};
+// HeapAlloc/HeapFree 的 RAII 包装（使用 WIN32 API 明文实现）
+struct HeapDeleter {
+	void operator()(char* ptr) const noexcept {
+		HeapFree(GetProcessHeap(), 0, ptr);
+	}
 };
+using HeapBuffer = std::unique_ptr<char[], HeapDeleter>;
 
-static SelCharCountInternal s_selCharCountInt;
-
-} // namespace
-
+// 内存对齐辅助（alignment 必须为 2 的幂）
+constexpr size_t AlignUp(size_t value, size_t alignment) noexcept {
+	return (value + alignment - 1) & ~(alignment - 1);
+}
 void StartSelCharCountAsync(void* hwndMain) noexcept {
 	const Sci_Position iSelStart = SciCall_GetSelectionStart();
 	const Sci_Position iSelEnd = SciCall_GetSelectionEnd();
 
 	if (iSelStart == iSelEnd) {
 		// 无选中：清除之前的结果
-		s_selCharCountInt.cancel.store(true, std::memory_order_relaxed);
+		s_stopSource.request_stop();
 		g_selCharCountResult.completedSeqNo.store(0, std::memory_order_relaxed);
 		g_selCharCountResult.selStart = 0;
 		g_selCharCountResult.selEnd = 0;
@@ -293,47 +292,30 @@ void StartSelCharCountAsync(void* hwndMain) noexcept {
 
 	// 1. 快照选中文本
 	const Sci_Position iSelBytes = SciCall_GetSelTextLength();
-	char* pszSnapshot = static_cast<char*>(HeapAlloc(GetProcessHeap(), 0, iSelBytes + 1));
+	const size_t allocSize = AlignUp(static_cast<size_t>(iSelBytes) + 1, 16);
+	HeapBuffer pszSnapshot(static_cast<char*>(HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, allocSize)));
 	if (!pszSnapshot) {
 		return;
 	}
-	SciCall_GetSelText(pszSnapshot);
+	SciCall_GetSelText(pszSnapshot.get());
 
 	// 2. 取消旧任务，递增序号
-	s_selCharCountInt.cancel.store(true, std::memory_order_relaxed);
+	s_stopSource.request_stop();
 	const unsigned int seq = ++g_selCharCountResult.currentSeqNo;
-	s_selCharCountInt.cancel.store(false, std::memory_order_relaxed);
 
-	// 3. 启动新线程
-	std::thread([seq, iSelStart, iSelEnd, iSelBytes, pszSnapshot, hwndMain]() {
-		// 在后台线程中计算
-		size_t chinese = 0, punctuation = 0, nonChineseNonSpace = 0, space = 0;
-		CountCharacterTypes(pszSnapshot, iSelBytes,
-			&chinese, &punctuation, &nonChineseNonSpace, &space,
-			&s_selCharCountInt.cancel);
-
-		// 检查是否被取消
-		if (s_selCharCountInt.cancel.load(std::memory_order_relaxed)) {
-			HeapFree(GetProcessHeap(), 0, pszSnapshot);
-			return;
-		}
-
-		// 写入结果（工作线程独占写入）
-		s_selCharCountInt.chinese = chinese;
-		s_selCharCountInt.punctuation = punctuation;
-		s_selCharCountInt.nonChineseNonSpace = nonChineseNonSpace;
-		s_selCharCountInt.space = space;
+	// --- 格式化和发送结果（同步/异步共用）---
+	auto formatAndPost = [seq, iSelStart, iSelEnd, hwndMain](
+		size_t chinese, size_t punctuation, size_t nonChineseNonSpace, size_t space) noexcept -> void
+	{
 		g_selCharCountResult.selStart = iSelStart;
 		g_selCharCountResult.selEnd = iSelEnd;
 
-		// 格式化显示文本
 		wchar_t tchC[32], tchP[32], tchO[32], tchS[32];
 		swprintf(tchC, 32, L"%zu", chinese);
 		swprintf(tchP, 32, L"%zu", punctuation);
 		swprintf(tchO, 32, L"%zu", nonChineseNonSpace);
 		swprintf(tchS, 32, L"%zu", space);
 
-		// 系统语言为中文时使用汉字标签（硬编码 Unicode 避免本地编码问题）
 		if (PRIMARYLANGID(GetUserDefaultUILanguage()) == LANG_CHINESE) {
 			swprintf(g_selCharCountResult.tchFormatted, SELCHARCOUNT_FORMATTED_SIZE,
 				L"\x4E2D%s \x7B26%s \x5B57%s \x7A7A%s",
@@ -343,13 +325,37 @@ void StartSelCharCountAsync(void* hwndMain) noexcept {
 				L"C:%s P:%s O:%s S:%s", tchC, tchP, tchO, tchS);
 		}
 
-		// release-store: 确保所有写入在线程发出完成信号前对其他线程可见
 		g_selCharCountResult.completedSeqNo.store(seq, std::memory_order_release);
-
-		HeapFree(GetProcessHeap(), 0, pszSnapshot);
-
-		// 通知主线程更新状态栏
 		PostMessage(static_cast<HWND>(hwndMain), APPM_SELCHARCOUNT, static_cast<WPARAM>(seq), 0);
+	};
+
+	// 3. 短串：在当前线程同步处理（避免线程开销）
+	if (iSelBytes < static_cast<Sci_Position>(MIN_PARALLEL_THRESHOLD)) {
+		size_t chinese = 0, punctuation = 0, nonChineseNonSpace = 0, space = 0;
+		CountCharacterTypes(pszSnapshot.get(), iSelBytes,
+			&chinese, &punctuation, &nonChineseNonSpace, &space);
+		formatAndPost(chinese, punctuation, nonChineseNonSpace, space);
+		return;
+	}
+
+	// 4. 长串：另起线程异步处理
+	s_stopSource = std::stop_source{};
+	std::stop_token token = s_stopSource.get_token();
+
+	std::jthread([seq, iSelStart, iSelEnd, iSelBytes,
+		pszSnapshot = std::move(pszSnapshot), hwndMain, token,
+		formatAndPost = std::move(formatAndPost)]() mutable
+	{
+		size_t chinese = 0, punctuation = 0, nonChineseNonSpace = 0, space = 0;
+		CountCharacterTypes(pszSnapshot.get(), iSelBytes,
+			&chinese, &punctuation, &nonChineseNonSpace, &space,
+			token);
+
+		if (token.stop_requested()) {
+			return;
+		}
+
+		formatAndPost(chinese, punctuation, nonChineseNonSpace, space);
 	}).detach();
 }
 

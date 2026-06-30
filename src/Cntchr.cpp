@@ -15,6 +15,7 @@
 #include <type_traits>
 #include <thread>
 #include <atomic>
+#include <stop_token>
 #include <cstring>
 #include <windows.h>
 
@@ -739,8 +740,26 @@ struct CharacterCounts {
     size_t all;
 };
 
+// 短于此长度的文本直接串行处理，避免线程开销
+constexpr size_t MIN_PARALLEL_THRESHOLD = 20 * 1024;
+
+// 串行处理短串（无需线程开销，减少延迟）
+static CharacterCounts CountCharacterTypesSerial(const char* utf8Text, size_t length) {
+    size_t total_c = 0, total_p = 0, total_s = 0, total_all = 0;
+    const char* ptr = utf8Text;
+    const char* const end = utf8Text + length;
+    while (ptr < end) {
+        const char32_t cp = cntchr_utf8_next(ptr);
+        total_s += static_cast<size_t>(is_unicode_whitespace(cp));
+        total_c += static_cast<size_t>(is_chinese_character(cp));
+        total_p += static_cast<size_t>(is_unicode_punctuation(cp));
+        total_all++;
+    }
+    return { total_c, total_p, total_s, total_all };
+}
+
 CharacterCounts CountCharacterTypesImpl(const char* utf8Text, size_t length,
-	const std::atomic<bool>* cancel = nullptr) {
+    std::stop_token token = std::stop_token{}) {
 #pragma warning(push)
 #pragma warning(disable:4324)
     // 定义计数器结构体，强制 64 字节对齐 (Cache Line Size)
@@ -754,28 +773,9 @@ CharacterCounts CountCharacterTypesImpl(const char* utf8Text, size_t length,
     };
 #pragma warning(pop)
 
-    constexpr size_t MIN_PARALLEL_THRESHOLD = 20 * 1024;
     constexpr size_t BATCH_CODEPOINTS = 4096;
 
-    // --- 串行处理短串 ---
-    if (length < MIN_PARALLEL_THRESHOLD) {
-        size_t total_c = 0, total_p = 0, total_s = 0, total_all = 0;
-        const char* ptr = utf8Text;
-        const char* const end = utf8Text + length;
-        while (ptr < end) {
-            if (cancel && cancel->load(std::memory_order_relaxed)) {
-                return { 0, 0, 0, 0 };
-            }
-            const char32_t cp = cntchr_utf8_next(ptr);
-            total_s += static_cast<size_t>(is_unicode_whitespace(cp));
-            total_c += static_cast<size_t>(is_chinese_character(cp));
-            total_p += static_cast<size_t>(is_unicode_punctuation(cp));
-            total_all++;
-        }
-        return { total_c, total_p, total_s, total_all };
-    }
-
-    // --- 并行处理长串 (使用 C++20 std::jthread + std::atomic) ---
+    // --- 并行处理长串 (使用 C++20 std::jthread + std::stop_token) ---
     const unsigned int num_threads = std::max(1u, std::thread::hardware_concurrency());
     const size_t chunk_size = length / num_threads;
 
@@ -789,7 +789,7 @@ CharacterCounts CountCharacterTypesImpl(const char* utf8Text, size_t length,
             const size_t my_start_byte = t * chunk_size;
             const size_t my_end_byte = (t == num_threads - 1) ? length : (t + 1) * chunk_size;
 
-            threads.emplace_back([&, t, num_threads, my_start_byte, my_end_byte]() {
+            threads.emplace_back([&, token, t, num_threads, my_start_byte, my_end_byte]() {
                 ThreadCounters local;
                 alignas(64) char32_t buffer[BATCH_CODEPOINTS];
 
@@ -812,7 +812,7 @@ CharacterCounts CountCharacterTypesImpl(const char* utf8Text, size_t length,
 
                 while (ptr < limit) {
                     // 每轮循环检查取消标志
-                    if (cancel && cancel->load(std::memory_order_relaxed)) {
+                    if (token.stop_requested()) {
                         return;
                     }
 
@@ -855,6 +855,29 @@ CharacterCounts CountCharacterTypesImpl(const char* utf8Text, size_t length,
     };
 }
 
+// 非 SEH 桥接：将原始指针转为 stop_token，短串直接串行，长串走并行
+static CharacterCounts CountBridge(const char* utf8Text, size_t length,
+    const std::stop_token* token_ptr) {
+    const auto token = token_ptr ? *token_ptr : std::stop_token{};
+    if (length < MIN_PARALLEL_THRESHOLD) {
+        return CountCharacterTypesSerial(utf8Text, length);
+    }
+    return CountCharacterTypesImpl(utf8Text, length, token);
+}
+
+// SEH 安全包装：只接受原始指针，避免 MSVC C2712
+//（__try/__except 与带析构函数的 std::stop_token 不能共存于同一函数）
+static bool CountSehSafe(const char* utf8Text, size_t length,
+    const std::stop_token* token_ptr, CharacterCounts& out) noexcept {
+    __try {
+        out = CountBridge(utf8Text, length, token_ptr);
+        return true;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
 } // namespace
 
 void CountCharacterTypes(const char* utf8Text, size_t length,
@@ -862,40 +885,37 @@ void CountCharacterTypes(const char* utf8Text, size_t length,
     size_t* punctuation,
     size_t* nonChineseNonSpace,
     size_t* space,
-    const std::atomic<bool>* cancel) {
+    std::stop_token token) {
     if (!utf8Text || !chinese || !punctuation || !nonChineseNonSpace || !space || length == 0) {
         *chinese = *punctuation = *nonChineseNonSpace = *space = 0;
         return;
     }
 
     size_t total_c = 0, total_p = 0, total_s = 0, total_all = 0;
-    __try {
-        const auto counts = CountCharacterTypesImpl(utf8Text, length, cancel);
 
-        // 如果被取消则返回零（无需进一步处理）
-        if (cancel && cancel->load(std::memory_order_relaxed)) {
-            *chinese = *punctuation = *nonChineseNonSpace = *space = 0;
-            return;
-        }
-
-        total_c = counts.chinese;
-        total_p = counts.punctuation;
-        total_s = counts.space;
-        total_all = counts.all;
-
-        *chinese = total_c;
-        *punctuation = total_p;
-        *space = total_s;
-        *nonChineseNonSpace = (total_c + total_p + total_s) <= total_all ?
-            total_all - total_c - total_p - total_s :
-            0;
-    }
-#ifndef EXCEPTION_EXECUTE_HANDLER
-#define EXCEPTION_EXECUTE_HANDLER 1
-#endif // !EXCEPTION_EXECUTE_HANDLER
-    __except (EXCEPTION_EXECUTE_HANDLER) {
+    CharacterCounts counts;
+    if (!CountSehSafe(utf8Text, length, &token, counts)) {
         *chinese = *punctuation = *nonChineseNonSpace = *space = 0;
+        return;
     }
+
+    // 如果被取消则返回零（无需进一步处理）
+    if (token.stop_requested()) {
+        *chinese = *punctuation = *nonChineseNonSpace = *space = 0;
+        return;
+    }
+
+    total_c = counts.chinese;
+    total_p = counts.punctuation;
+    total_s = counts.space;
+    total_all = counts.all;
+
+    *chinese = total_c;
+    *punctuation = total_p;
+    *space = total_s;
+    *nonChineseNonSpace = (total_c + total_p + total_s) <= total_all ?
+        total_all - total_c - total_p - total_s :
+        0;
 }
 
 std::string& RemoveUnnecessaryLeadingCharacters(std::string& str) noexcept {

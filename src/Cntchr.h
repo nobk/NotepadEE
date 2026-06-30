@@ -1,6 +1,6 @@
 #pragma once
 #include <cstddef>
-#include <atomic>
+#include <stop_token>
 
 /**
  * @brief Count character types in UTF-8 text.
@@ -11,13 +11,16 @@
  * @param punctuation      [out] Unicode punctuation (Pc,Pd,Ps,Pe,Pi,Pf,Po) + math symbols (Sm)
  * @param nonChineseNonSpace [out] everything else not counted above
  * @param space            [out] Unicode whitespace (Zs,Zl,Zp) + C0/C1 controls (Cc)
- * @param cancel           [in] optional atomic flag; when set to true, the function
- *                          may return early with undefined results. Pass nullptr if
- *                          cancellation is not needed.
+ * @param token            [in] std::stop_token for cooperative cancellation;
+ *                          when stop is requested the function returns early.
+ *                          Default-constructed token (never stop-requested) if omitted.
  */
 void CountCharacterTypes(const char* utf8Text, size_t length,
 	size_t* chinese,
 	size_t* punctuation,
 	size_t* nonChineseNonSpace,
 	size_t* space,
-	const std::atomic<bool>* cancel = nullptr);
+	std::stop_token token = std::stop_token{});
+
+// 小于此字节数的文本直接串行处理，不创建线程
+inline constexpr size_t MIN_PARALLEL_THRESHOLD = 20 * 1024;
