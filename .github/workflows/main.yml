@@ -57,12 +57,14 @@ jobs:
     - name: Clang ${{ matrix.platform }} Release
       run: |
         CALL "build\VisualStudio\build.bat" Build ${{ matrix.platform }} LLVMRelease 1
-        CALL "build\make_zip.bat" LLVM ${{ matrix.platform }} Release 1
+        CALL "locale\build.bat" Build ${{ matrix.platform }} Release 1
+        XCOPY /Q /S /Y "build\bin\Release\${{ matrix.platform }}\locale" "build\bin\LLVMRelease\${{ matrix.platform }}\locale\"
+        CALL "build\make_zip.bat" LLVM ${{ matrix.platform }} Release Locale 1
 
     - uses: actions/upload-artifact@v7
       with:
-          name: Notepad4_Clang_MSVC${{ matrix.system.version }}_en_${{ matrix.platform }}
-          path: 'build\Notepad4_LLVM_${{ matrix.platform }}_*.zip'
+          name: Notepad4_Clang_MSVC${{ matrix.system.version }}_i18n_${{ matrix.platform }}
+          path: 'build\Notepad4_i18n_LLVM_${{ matrix.platform }}_*.zip'
 
   llvm_mingw:
     strategy:

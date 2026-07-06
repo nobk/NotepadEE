@@ -1717,7 +1717,7 @@ BEGIN
     IDS_READONLY_FILE       "(файл только для чтения)"
     IDS_READONLY_MODE       "(режим только для чтения)"
                             // Line, Column, Character, Selected, Selected Line, Find
-    IDS_STATUSITEM_FORMAT   "Стр %s / %s \nКол %s / %s \nСимв %s / %s \nВыд %s / %s \nВыдКол %s \nНайд %s "
+    IDS_STATUSITEM_FORMAT   "Стр %s / %s \nКол %s / %s \nСимв %s / %s \nВыд %s / %s \nВыдКол %s \nНайд %s \nВыч %s "
     IDS_ZERO_LENGTH_MATCH   "^ Совпадение нулевой длины"
     IDS_LOADFILE            "Загрузка ""%s""..."
     IDS_SAVEFILE            "Сохранение ""%s""..."
@@ -2130,4 +2130,3 @@ END
 #include "../../src/Notepad4.ver"
 /////////////////////////////////////////////////////////////////////////////
 #endif    // not APSTUDIO_INVOKED
-

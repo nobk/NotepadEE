@@ -80,6 +80,15 @@ for t in tests:
 #include <sapi.h>
 #pragma comment(lib, "sapi.lib")
 
+// 引用 Notepad4.cpp 中的 INI 文件路径
+extern WCHAR szIniFile[MAX_PATH];
+
+// [Extend Expression] INI 配置变量（默认值）
+bool bEnableExtendExpr = true;
+bool bJITEval = true;
+bool bSelEval = true;
+int  nSignificantDigits = 8;
+
 // 这些函数，类型，模板相当于对其它.cpp隐藏了，类似C的static但用途更广，单独放一个文件避免多一层缩进
 namespace {
 #	include "ExtendExpr_impl.hpp"
@@ -197,7 +206,6 @@ static bool handleShiftEnterInBlock(Sci_Position iCurPos) {
 
 // 主入口函数
 bool CallExtendExpr(bool bShiftDown, bool noEnter) {
-	extern bool bEnableExtendExpr;
 	if (!bEnableExtendExpr)
 		return false;
 
@@ -342,8 +350,8 @@ void StartSelCharCountAsync(void* hwndMain) noexcept {
 	s_stopSource = std::stop_source{};
 	std::stop_token token = s_stopSource.get_token();
 
-	std::jthread([seq, iSelStart, iSelEnd, iSelBytes,
-		pszSnapshot = std::move(pszSnapshot), hwndMain, token,
+	std::jthread([iSelBytes,
+		pszSnapshot = std::move(pszSnapshot), token,
 		formatAndPost = std::move(formatAndPost)]() mutable
 	{
 		size_t chinese = 0, punctuation = 0, nonChineseNonSpace = 0, space = 0;
@@ -649,4 +657,183 @@ bool EvaluateJSExpressionCached(const char* expr, int codepage, std::string& res
 	if (!engine.initialized && !engine.init())
 		return false;
 	return engine.eval(expr, codepage, result);
+}
+
+//=============================================================================
+//
+// 即时求值（JIT-Eval）实现
+//
+//=============================================================================
+
+// 全局求值结果缓冲区
+wchar_t g_wchEvalResult[64] = L"";
+
+// 从光标位置到行首提取表达式并求值（键盘输入触发）
+// 使用 teCpp（含 find_left_bound + reduce_left_bound 重试逻辑）
+static bool EvaluateExprAtCursor() noexcept {
+	const Sci_Position iCurPos = SciCall_GetCurrentPos();
+	const Sci_Position iLineStart = SciCall_PositionFromLine(
+		SciCall_LineFromPosition(iCurPos));
+
+	if (iCurPos <= iLineStart) {
+		g_wchEvalResult[0] = L'\0';
+		return false;
+	}
+
+	// 提取从行首到光标位置的文本
+	const Sci_Position bufLen = iCurPos - iLineStart + 1;
+	const size_t allocSize = AlignUp(static_cast<size_t>(bufLen), 16);
+	HeapBuffer buf(static_cast<char*>(HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, allocSize)));
+	if (!buf) {
+		g_wchEvalResult[0] = L'\0';
+		return false;
+	}
+
+	struct Sci_TextRangeFull tr = {{iLineStart, iCurPos}, buf.get()};
+	SciCall_GetTextRangeFull(&tr);
+
+	// 去除左侧无效字符（返回需跳过的字节偏移量，避免 std::string 复制）
+	const size_t len = static_cast<size_t>(iCurPos - iLineStart);
+	const size_t offset = RemoveUnnecessaryLeadingCharacters(buf.get(), len);
+	if (offset >= len) {
+		g_wchEvalResult[0] = L'\0';
+		return false;
+	}
+	const size_t remaining = len - offset;
+
+	// 使用 teCpp 求值（含左边界缩减重试）
+	std::vector<char> result;
+	result.reserve(64);
+	if (!teCpp(std::string_view(buf.get() + offset, remaining), result) || result.empty()) {
+		g_wchEvalResult[0] = L'\0';
+		return false;
+	}
+
+	// 结果追加 '\0' 以转成字符串
+	result.push_back('\0');
+
+	// UTF-8 转宽字符
+	const int wideLen = MultiByteToWideChar(CP_UTF8, 0, result.data(), -1, nullptr, 0);
+	if (wideLen <= 0 || static_cast<size_t>(wideLen) > COUNTOF(g_wchEvalResult)) {
+		g_wchEvalResult[0] = L'\0';
+		return false;
+	}
+	MultiByteToWideChar(CP_UTF8, 0, result.data(), -1, g_wchEvalResult, wideLen);
+	return true;
+}
+
+// 对选中文本直接求值（选中区域触发，不缩减左边界）
+// 直接调用 tecpp_expr，仅尝试一次
+static bool EvaluateSelectionExpr() noexcept {
+	const Sci_Position iSelStart = SciCall_GetSelectionStart();
+	const Sci_Position iSelEnd = SciCall_GetSelectionEnd();
+
+	if (iSelStart == iSelEnd) {
+		g_wchEvalResult[0] = L'\0';
+		return false;
+	}
+
+	// 矩形选择跳过
+	if (SciCall_IsRectangularSelection()) {
+		g_wchEvalResult[0] = L'\0';
+		return false;
+	}
+
+	// 提取选中文本（复用 StartSelCharCountAsync 的内存分配方式，避免 release 下异常）
+	const Sci_Position iSelBytes = SciCall_GetSelTextLength();
+	const size_t allocSize = AlignUp(static_cast<size_t>(iSelBytes) + 1, 16);
+	HeapBuffer buf(static_cast<char*>(HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, allocSize)));
+	if (!buf) {
+		g_wchEvalResult[0] = L'\0';
+		return false;
+	}
+	SciCall_GetSelText(buf.get());
+
+	// 剔除首尾 Unicode 空白（使用 Cntchr.cpp 的公共函数，支持 Unicode 空白全集）
+	size_t length = static_cast<size_t>(iSelBytes);
+	const auto [skip, remain] = TrimWhitespace(buf.get(), length);
+	if (remain == 0) {
+		g_wchEvalResult[0] = L'\0';
+		return false;
+	}
+
+	// 直接调 tecpp_expr（仅一次，不缩减左边界）
+	const std::string_view sv(buf.get() + skip, remain);
+	const double rv = tecpp_expr(sv);
+	if (std::isnan(rv)) {
+		g_wchEvalResult[0] = L'\0';
+		return false;
+	}
+
+	// 格式化数值
+	std::string s = formatDoubleResult(rv);
+
+	// 防御：过滤掉 "nan"/"-nan"/"inf"/"-inf" 等非数值（某些环境可能漏检 isnan）
+	if (isNanOrInfString(s)) {
+		g_wchEvalResult[0] = L'\0';
+		return false;
+	}
+
+	// UTF-8 转宽字符
+	const int wideLen = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);
+	if (wideLen <= 0 || static_cast<size_t>(wideLen) > COUNTOF(g_wchEvalResult)) {
+		g_wchEvalResult[0] = L'\0';
+		return false;
+	}
+	MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, g_wchEvalResult, wideLen);
+	return true;
+}
+
+//=============================================================================
+//
+// 从 Notepad4.ini 加载 [Extend Expression] 节配置
+// 若该节或其中键值不存在，则写入默认值
+//
+//=============================================================================
+void LoadExtendExprSettings() noexcept {
+	// 检查 [Extend Expression] 节是否存在
+	WCHAR szCheck[2] = {0};
+	GetPrivateProfileStringW(L"Extend Expression", L"Enable", L"", szCheck, 2, szIniFile);
+	if (szCheck[0] == L'\0') {
+		// 节或键不存在 → 写入默认值
+		WritePrivateProfileStringW(L"Extend Expression", L"Enable", L"1", szIniFile);
+		WritePrivateProfileStringW(L"Extend Expression", L"JITEval", L"1", szIniFile);
+		WritePrivateProfileStringW(L"Extend Expression", L"SelEval", L"1", szIniFile);
+		WritePrivateProfileStringW(L"Extend Expression", L"SignificantDigits", L"8", szIniFile);
+	}
+
+	bEnableExtendExpr = (GetPrivateProfileIntW(L"Extend Expression", L"Enable", 1, szIniFile) != 0);
+	bJITEval         = (GetPrivateProfileIntW(L"Extend Expression", L"JITEval", 1, szIniFile) != 0);
+	bSelEval         = (GetPrivateProfileIntW(L"Extend Expression", L"SelEval", 1, szIniFile) != 0);
+	nSignificantDigits   = GetPrivateProfileIntW(L"Extend Expression", L"SignificantDigits", 8, szIniFile);
+	if (nSignificantDigits < 1)  nSignificantDigits = 1;
+	if (nSignificantDigits > 15) nSignificantDigits = 15;  // double 最多 15 位有效数字
+}
+
+// 统一入口，供 Notepad4.cpp 的 SCN_UPDATEUI 一行调用
+void UpdateEvalFromUI(unsigned int updated) noexcept {
+	// 选中区域求值（优先级高于键盘求值）
+	if (updated & SC_UPDATE_SELECTION) {
+		const Sci_Position iSelStart = SciCall_GetSelectionStart();
+		const Sci_Position iSelEnd = SciCall_GetSelectionEnd();
+		if (iSelStart != iSelEnd) {
+			if (bEnableExtendExpr && bSelEval && EvaluateSelectionExpr())
+				return;
+			// 选中区域求值失败或未启用 → 清除上次结果
+			g_wchEvalResult[0] = L'\0';
+			return;
+		}
+	}
+
+	// 键盘输入求值（仅当 bEnableExtendExpr 和 bJITEval 均启用时）
+	if ((updated & (SC_UPDATE_CONTENT | SC_UPDATE_SELECTION)) && bEnableExtendExpr && bJITEval) {
+		const Sci_Position iPos = SciCall_GetCurrentPos();
+		if (iPos > 0) {
+			const int ch = SciCall_GetCharAt(iPos - 1);
+			if ((ch >= '0' && ch <= '9') || ch == ')') {
+				EvaluateExprAtCursor();
+				// 不成功时 EvaluateExprAtCursor 已清空 g_wchEvalResult
+			}
+		}
+	}
 }

@@ -107,6 +107,26 @@ std::string_view reduce_left_bound(std::string_view sv) {
 	return sv;
 }
 
+// 将浮点数格式化为字符串，根据数值大小自动选择精度
+static std::string formatDoubleResult(double rv) {
+	double idbl = 0.0;
+	double const fracpart = fabs(modf(rv, &idbl));
+	double const intpart = fabs(idbl);
+	if ((fracpart < 1.0E-8) && (intpart < 1.0E+21)) {
+		if (idbl < 0.0)
+			return std::format("-{:.21G}", intpart);
+		else
+			return std::format("{:.21G}", intpart);
+	} else {
+		return std::format("{:.{}G}", rv, nSignificantDigits);
+	}
+}
+
+// 检查格式化结果是否为 nan/inf 等非数值
+static bool isNanOrInfString(const std::string& s) noexcept {
+	return static_cast<bool>(ctre::match<R"(^-?(nan|inf)$)", ctre::case_insensitive>(s));
+}
+
 bool teCpp(std::string_view tmf, std::vector<char>& res) {
 	std::string_view sv = find_left_bound(tmf);
 	double rv = 0.0;
@@ -121,19 +141,9 @@ bool teCpp(std::string_view tmf, std::vector<char>& res) {
 	}
 	if (!find)
 		return false;
-	double       idbl = 0.0;
-	double const fracpart = fabs(modf(rv, &idbl));
-	double const intpart = fabs(idbl);
-	std::string s;
-	if ((fracpart < 1.0E-8) && (intpart < 1.0E+21)) {
-		if(idbl < 0.0)
-			s = std::format("-{:.21G}", intpart);
-		else
-			s = std::format("{:.21G}", intpart);
-	}
-	else {
-		s = std::format("{:.8G}", rv);
-	}
+	std::string s = formatDoubleResult(rv);
+	if (isNanOrInfString(s))
+		return false;
 	res.assign(s.begin(), s.end());
 	return true;
 }
@@ -495,37 +505,37 @@ void CopyToUtf8Result(const std::string& source, std::vector<char>& tar) {
 }
 
 struct SpeedExpr {
-    std::string_view name;
-    std::string_view teExpr;    // tinyexpr++ 表达式
-    std::string_view jsExpr;    // JS 表达式
+	std::string_view name;
+	std::string_view teExpr;    // tinyexpr++ 表达式
+	std::string_view jsExpr;    // JS 表达式
 };
 
 // --- 1. 专门用于验证计算结果是否一致的函数 ---
 std::string VerifyMathResults(std::span<const SpeedExpr> tests) {
-    auto resultStr = std::format("=== Math Verification: TExp vs JS (String Comparison) ===\r\n");
-    resultStr += std::format("{:<24} | {:<20} | {:<20} | {:<10}\r\n",
-        "Expression", "TExp Output", "JS Output", "Match?");
-    resultStr += std::string(75, '-') + "\r\n";
+	auto resultStr = std::format("=== Math Verification: TExp vs JS (String Comparison) ===\r\n");
+	resultStr += std::format("{:<24} | {:<20} | {:<20} | {:<10}\r\n",
+		"Expression", "TExp Output", "JS Output", "Match?");
+	resultStr += std::string(75, '-') + "\r\n";
 
-    for (const auto& test : tests) {
-        // 1. 获取 tinyexpr++ 的原始字符串结果
-        std::vector<char> teVec;
-        teVec.reserve(256);
-        teCpp(test.teExpr, teVec);
-        std::string teVal(teVec.begin(), teVec.end());
+	for (const auto& test : tests) {
+		// 1. 获取 tinyexpr++ 的原始字符串结果
+		std::vector<char> teVec;
+		teVec.reserve(256);
+		teCpp(test.teExpr, teVec);
+		std::string teVal(teVec.begin(), teVec.end());
 
-        // 2. 获取 JS 引擎的原始字符串结果
-        std::string jsVal;
-        EvaluateJSExpression(test.jsExpr.data(), CP_UTF8, jsVal);
+		// 2. 获取 JS 引擎的原始字符串结果
+		std::string jsVal;
+		EvaluateJSExpression(test.jsExpr.data(), CP_UTF8, jsVal);
 
-        // 3. 直接进行字符串比对
-        bool isMatch = (teVal == jsVal);
+		// 3. 直接进行字符串比对
+		bool isMatch = (teVal == jsVal);
 
-        resultStr += std::format("{:<24} | {:<20} | {:<20} | {:<10}\r\n",
-            test.name, teVal, jsVal, isMatch ? "YES" : "NO");
-    }
+		resultStr += std::format("{:<24} | {:<20} | {:<20} | {:<10}\r\n",
+			test.name, teVal, jsVal, isMatch ? "YES" : "NO");
+	}
 
-    return resultStr;
+	return resultStr;
 }
 
 
@@ -624,9 +634,9 @@ std::string RunSpeedTest() {
 }
 
 bool extendExpr(std::string_view tmf, std::vector<char>& res) {
-	std::string stmf{ tmf };
-	RemoveUnnecessaryLeadingCharacters(stmf);
-	if (stmf.empty()) return false;
+	const size_t offset = RemoveUnnecessaryLeadingCharacters(tmf.data(), tmf.size());
+	if (offset >= tmf.size()) return false;
+	std::string_view stmf = tmf.substr(offset);
 
 	// calcTime: time arithmetic expression, e.g. "1h30m+15m", "01:30:00-15.079s"
 	if (std::isdigit(static_cast<unsigned char>(stmf[0]))) {

@@ -106,6 +106,7 @@ enum {
 	StatusItem_Selection,
 	StatusItem_SelectedLine,
 	StatusItem_Find,
+	StatusItem_Eval,
 	StatusItem_Empty,
 	StatusItem_Lexer,
 	StatusItem_Encoding,

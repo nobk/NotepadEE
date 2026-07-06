@@ -1716,7 +1716,7 @@ BEGIN
     IDS_READONLY_FILE       "(File Sola Lettura)"
     IDS_READONLY_MODE       "(Modalità Sola Lettura)"
                             // Line, Column, Character, Selected, Selected Line, Find
-    IDS_STATUSITEM_FORMAT   "Linea: %s / %s \nColonna: %s / %s \nCarattere: %s / %s \nSelezione: %s / %s \nLinee Selezionate: %s \nTrovati: %s "
+    IDS_STATUSITEM_FORMAT   "Linea: %s / %s \nColonna: %s / %s \nCarattere: %s / %s \nSelezione: %s / %s \nLinee Selezionate: %s \nTrovati: %s \nValuta %s "
     IDS_ZERO_LENGTH_MATCH   "^ Corrispondenza di lunghezza-zero"
     IDS_LOADFILE            "Caricamento ""%s""..."
     IDS_SAVEFILE            "Salvataggio ""%s""..."
@@ -2129,7 +2129,3 @@ END
 #include "../../src/Notepad4.ver"
 /////////////////////////////////////////////////////////////////////////////
 #endif    // not APSTUDIO_INVOKED
-
-
-
-

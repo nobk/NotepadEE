@@ -295,17 +295,17 @@ print(punctuation_func)
 constexpr const int UnicodeMax = 0x10FFFF;
 
 struct Rg {
-    char32_t start;
-    char32_t end;
+	char32_t start;
+	char32_t end;
 };
 
 template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
 
 // 页面类型简化：Empty/Full 由查找表隐含
 enum class PageKind : uint8_t {
-    Single,       // 1个码点，存储在 PageInfo 中
-    Small,        // 2-3个码点，存储在 PageInfo 中
-    Bitmap        // >3个码点，存储在全局位图池中
+	Single,       // 1个码点，存储在 PageInfo 中
+	Small,        // 2-3个码点，存储在 PageInfo 中
+	Bitmap        // >3个码点，存储在全局位图池中
 };
 
 // ==========================================
@@ -315,34 +315,34 @@ enum class PageKind : uint8_t {
 template <auto... Args>
 class CodePointRangeSetBase {
 protected:
-    using ArgVariant = std::variant<int, Rg>;
-    static constexpr std::array<ArgVariant, sizeof...(Args)> args = {Args...};
+	using ArgVariant = std::variant<int, Rg>;
+	static constexpr std::array<ArgVariant, sizeof...(Args)> args = {Args...};
 
-    static consteval std::array<Rg, sizeof...(Args)> convert_to_ranges() {
-        std::array<Rg, sizeof...(Args)> result{};
-        for (size_t i = 0; i < sizeof...(Args); ++i) {
-            result[i] = std::visit(overloaded{
-                [](int v) {
-                    if (v < 0 || v > UnicodeMax) throw std::domain_error("Out of bounds");
-                    return Rg{static_cast<char32_t>(v), static_cast<char32_t>(v)};
-                },
-                [](const Rg& r) {
-                    if (r.start > r.end || r.end > UnicodeMax) throw std::domain_error("Invalid Range");
-                    return r;
-                }
-            }, args[i]);
-        }
-        return result;
-    }
+	static consteval std::array<Rg, sizeof...(Args)> convert_to_ranges() {
+		std::array<Rg, sizeof...(Args)> result{};
+		for (size_t i = 0; i < sizeof...(Args); ++i) {
+			result[i] = std::visit(overloaded{
+				[](int v) {
+					if (v < 0 || v > UnicodeMax) throw std::domain_error("Out of bounds");
+					return Rg{static_cast<char32_t>(v), static_cast<char32_t>(v)};
+				},
+				[](const Rg& r) {
+					if (r.start > r.end || r.end > UnicodeMax) throw std::domain_error("Invalid Range");
+					return r;
+				}
+			}, args[i]);
+		}
+		return result;
+	}
 
-    static constexpr std::array<Rg, sizeof...(Args)> ranges = convert_to_ranges();
+	static constexpr std::array<Rg, sizeof...(Args)> ranges = convert_to_ranges();
 
-    static constexpr char32_t max_code_point = []() consteval {
-        if constexpr (sizeof...(Args) == 0) return 0;
-        char32_t max = 0;
-        for (const auto& r : ranges) if (r.end > max) max = r.end;
-        return max;
-    }();
+	static constexpr char32_t max_code_point = []() consteval {
+		if constexpr (sizeof...(Args) == 0) return 0;
+		char32_t max = 0;
+		for (const auto& r : ranges) if (r.end > max) max = r.end;
+		return max;
+	}();
 };
 
 // ==========================================
@@ -351,314 +351,314 @@ protected:
 
 template <auto... Args>
 class CodePointRangeSet : public CodePointRangeSetBase<Args...> {
-    using Base = CodePointRangeSetBase<Args...>;
+	using Base = CodePointRangeSetBase<Args...>;
 
 public:
-    // 极简的 4字节 页面描述符
-    struct CompactPageInfo {
-        // 原始数据容器
-        uint32_t raw;
+	// 极简的 4字节 页面描述符
+	struct CompactPageInfo {
+		// 原始数据容器
+		uint32_t raw;
 
-        // 类型枚举 (2 bits)
-        enum Type : uint32_t {
-            Bitmap = 0, // 00
-            Single = 1, // 01
-            Double = 2, // 10
-            Triple = 3  // 11
-        };
+		// 类型枚举 (2 bits)
+		enum Type : uint32_t {
+			Bitmap = 0, // 00
+			Single = 1, // 01
+			Double = 2, // 10
+			Triple = 3  // 11
+		};
 
-        constexpr Type get_type() const {
-            return static_cast<Type>(raw >> 30);
-        }
+		constexpr Type get_type() const {
+			return static_cast<Type>(raw >> 30);
+		}
 
-        // --- 判断是否为位图模式 ---
-        FORCE_INLINE constexpr bool is_bitmap() const {
-            return get_type() == Bitmap;
-        }
+		// --- 判断是否为位图模式 ---
+		FORCE_INLINE constexpr bool is_bitmap() const {
+			return get_type() == Bitmap;
+		}
 
-        // --- Bitmap 模式 ---
-        // 获取位图在全局数组中的起始索引
-        FORCE_INLINE constexpr uint32_t get_bitmap_index() const {
-            return raw & 0x3FFFFFFF; // 取低30位 (支持 10亿+ 个位图字，足够了)
-        }
+		// --- Bitmap 模式 ---
+		// 获取位图在全局数组中的起始索引
+		FORCE_INLINE constexpr uint32_t get_bitmap_index() const {
+			return raw & 0x3FFFFFFF; // 取低30位 (支持 10亿+ 个位图字，足够了)
+		}
 
-        // --- Sparse 模式 (Single/Double/Triple) ---
-        // 检查 offset 是否存在于压缩的数据中
-        FORCE_INLINE constexpr bool contains_sparse(uint8_t offset) const {
-            // 根据类型解码
-            const uint32_t t = raw >> 30;
+		// --- Sparse 模式 (Single/Double/Triple) ---
+		// 检查 offset 是否存在于压缩的数据中
+		FORCE_INLINE constexpr bool contains_sparse(uint8_t offset) const {
+			// 根据类型解码
+			const uint32_t t = raw >> 30;
 
-            // 技巧：去掉if改为无分支判断，以便流水线并行以及AVX2优化（g++ clang++）
-            // 这里的逻辑：将 offset 放在不同的字节位置进行比较
+			// 技巧：去掉if改为无分支判断，以便流水线并行以及AVX2优化（g++ clang++）
+			// 这里的逻辑：将 offset 放在不同的字节位置进行比较
 
-            // 检查第1个字节 (Single, Double, Triple 都有)
-            const uint32_t r1 = static_cast<uint32_t>(((raw >> 0) & 0xFF) == offset);
+			// 检查第1个字节 (Single, Double, Triple 都有)
+			const uint32_t r1 = static_cast<uint32_t>(((raw >> 0) & 0xFF) == offset);
 
-            // 检查第2个字节 (仅 Double, Triple)
-            const uint32_t r2 = static_cast<uint32_t>(t >= Double) & static_cast<uint32_t>(((raw >> 8) & 0xFF) == offset);
+			// 检查第2个字节 (仅 Double, Triple)
+			const uint32_t r2 = static_cast<uint32_t>(t >= Double) & static_cast<uint32_t>(((raw >> 8) & 0xFF) == offset);
 
-            // 检查第3个字节 (仅 Triple)
-            const uint32_t r3 = static_cast<uint32_t>(t == Triple) & static_cast<uint32_t>(((raw >> 16) & 0xFF) == offset);
+			// 检查第3个字节 (仅 Triple)
+			const uint32_t r3 = static_cast<uint32_t>(t == Triple) & static_cast<uint32_t>(((raw >> 16) & 0xFF) == offset);
 
-            return (r1 | r2 | r3);
-        }
+			return (r1 | r2 | r3);
+		}
 
-        // --- 构建辅助函数 (编译期调用) ---
-        static constexpr CompactPageInfo make_bitmap(size_t idx) {
-            return { (static_cast<uint32_t>(Bitmap) << 30) | static_cast<uint32_t>(idx) };
-        }
+		// --- 构建辅助函数 (编译期调用) ---
+		static constexpr CompactPageInfo make_bitmap(size_t idx) {
+			return { (static_cast<uint32_t>(Bitmap) << 30) | static_cast<uint32_t>(idx) };
+		}
 
-        static constexpr CompactPageInfo make_sparse(const uint8_t* start, size_t count) {
-            uint32_t d = 0;
-            uint32_t type_bits = 0;
+		static constexpr CompactPageInfo make_sparse(const uint8_t* start, size_t count) {
+			uint32_t d = 0;
+			uint32_t type_bits = 0;
 
-            if (count == 1) type_bits = Single;
-            else if (count == 2) type_bits = Double;
-            else if (count == 3) type_bits = Triple;
+			if (count == 1) type_bits = Single;
+			else if (count == 2) type_bits = Double;
+			else if (count == 3) type_bits = Triple;
 
-            for (size_t i = 0; i < count; ++i) {
-                d |= (static_cast<uint32_t>(start[i]) << (i * 8));
-            }
+			for (size_t i = 0; i < count; ++i) {
+				d |= (static_cast<uint32_t>(start[i]) << (i * 8));
+			}
 
-            return { (type_bits << 30) | d };
-        }
-    };
+			return { (type_bits << 30) | d };
+		}
+	};
 
 private:
-    // 常量定义
-    static constexpr size_t PageSize = 256;
-    static constexpr size_t FULL_PAGE_COUNT = PageSize;
-    static constexpr size_t WORDS_PER_PAGE = (PageSize + 63) / 64; // 位图需要的 uint64_t 数量
-    static constexpr size_t SMALL_THRESHOLD = 3; // <= 3 使用内嵌数组
+	// 常量定义
+	static constexpr size_t PageSize = 256;
+	static constexpr size_t FULL_PAGE_COUNT = PageSize;
+	static constexpr size_t WORDS_PER_PAGE = (PageSize + 63) / 64; // 位图需要的 uint64_t 数量
+	static constexpr size_t SMALL_THRESHOLD = 3; // <= 3 使用内嵌数组
 
-    // 1. 预计算：统计每个页面的码点数量
-    static constexpr size_t TOTAL_PAGES_NEEDED = (Base::max_code_point / PageSize) + 1;
+	// 1. 预计算：统计每个页面的码点数量
+	static constexpr size_t TOTAL_PAGES_NEEDED = (Base::max_code_point / PageSize) + 1;
 
-    using PageCountArray = std::array<uint16_t, TOTAL_PAGES_NEEDED>;
+	using PageCountArray = std::array<uint16_t, TOTAL_PAGES_NEEDED>;
 
-    static consteval PageCountArray calculate_page_counts() {
-        PageCountArray counts{};
-        for (const auto& r : Base::ranges) {
-            uint32_t start_page = r.start / PageSize;
-            uint32_t end_page = r.end / PageSize;
+	static consteval PageCountArray calculate_page_counts() {
+		PageCountArray counts{};
+		for (const auto& r : Base::ranges) {
+			uint32_t start_page = r.start / PageSize;
+			uint32_t end_page = r.end / PageSize;
 
-            for (uint32_t p = start_page; p <= end_page; ++p) {
-                uint32_t p_start = p * PageSize;
-                uint32_t p_end = p_start + PageSize - 1;
-                uint32_t act_start = std::max((uint32_t)r.start, p_start);
-                uint32_t act_end = std::min((uint32_t)r.end, p_end);
+			for (uint32_t p = start_page; p <= end_page; ++p) {
+				uint32_t p_start = p * PageSize;
+				uint32_t p_end = p_start + PageSize - 1;
+				uint32_t act_start = std::max((uint32_t)r.start, p_start);
+				uint32_t act_end = std::min((uint32_t)r.end, p_end);
 
-                if (act_start <= act_end) {
-                    counts[p] += static_cast<uint16_t>(act_end - act_start + 1);
-                }
-            }
-        }
-        return counts;
-    }
+				if (act_start <= act_end) {
+					counts[p] += static_cast<uint16_t>(act_end - act_start + 1);
+				}
+			}
+		}
+		return counts;
+	}
 
-    static constexpr PageCountArray page_counts = calculate_page_counts();
+	static constexpr PageCountArray page_counts = calculate_page_counts();
 
-    // 2. 预计算：获取页面内的偏移量 (仅对非Full/Empty页面)
-    // 返回 pair<偏移数组, 实际数量>
-    static constexpr auto get_offsets_for_page(uint32_t page_idx) {
-        std::array<uint8_t, PageSize> offsets{};
-        uint16_t count = 0;
+	// 2. 预计算：获取页面内的偏移量 (仅对非Full/Empty页面)
+	// 返回 pair<偏移数组, 实际数量>
+	static constexpr auto get_offsets_for_page(uint32_t page_idx) {
+		std::array<uint8_t, PageSize> offsets{};
+		uint16_t count = 0;
 
-        uint32_t p_start = page_idx * PageSize;
-        uint32_t p_end = p_start + PageSize - 1;
+		uint32_t p_start = page_idx * PageSize;
+		uint32_t p_end = p_start + PageSize - 1;
 
-        for (const auto& r : Base::ranges) {
-            if (r.end < p_start || r.start > p_end) continue;
-            uint32_t s = std::max((uint32_t)r.start, p_start);
-            uint32_t e = std::min((uint32_t)r.end, p_end);
-            for (uint32_t cp = s; cp <= e; ++cp) {
-                offsets[count++] = static_cast<uint8_t>(cp - p_start);
-            }
-        }
-        return std::pair{offsets, count};
-    }
+		for (const auto& r : Base::ranges) {
+			if (r.end < p_start || r.start > p_end) continue;
+			uint32_t s = std::max((uint32_t)r.start, p_start);
+			uint32_t e = std::min((uint32_t)r.end, p_end);
+			for (uint32_t cp = s; cp <= e; ++cp) {
+				offsets[count++] = static_cast<uint8_t>(cp - p_start);
+			}
+		}
+		return std::pair{offsets, count};
+	}
 
-    // 3. 构建数据结构
-    // 统计不同类型的页面数量，用于分配数组大小
-    struct MetaCounts {
-        size_t non_empty_desc = 0; // 需要 PageInfo 的数量 (Single + Small + Bitmap)
-        size_t bitmap_words = 0;   // 位图池需要的 uint64_t 数量
-    };
+	// 3. 构建数据结构
+	// 统计不同类型的页面数量，用于分配数组大小
+	struct MetaCounts {
+		size_t non_empty_desc = 0; // 需要 PageInfo 的数量 (Single + Small + Bitmap)
+		size_t bitmap_words = 0;   // 位图池需要的 uint64_t 数量
+	};
 
-    static consteval MetaCounts count_meta() {
-        MetaCounts mc{};
-        for (uint16_t c : page_counts) {
-            if (c == 0 || c == FULL_PAGE_COUNT) continue; // Empty 或 Full 不需要描述符
+	static consteval MetaCounts count_meta() {
+		MetaCounts mc{};
+		for (uint16_t c : page_counts) {
+			if (c == 0 || c == FULL_PAGE_COUNT) continue; // Empty 或 Full 不需要描述符
 
-            mc.non_empty_desc++;
-            if (c > SMALL_THRESHOLD) {
-                mc.bitmap_words += WORDS_PER_PAGE;
-            }
-        }
-        return mc;
-    }
+			mc.non_empty_desc++;
+			if (c > SMALL_THRESHOLD) {
+				mc.bitmap_words += WORDS_PER_PAGE;
+			}
+		}
+		return mc;
+	}
 
-    static constexpr MetaCounts meta = count_meta();
+	static constexpr MetaCounts meta = count_meta();
 
-    // 1. 定义查找表使用的类型
-    // 如果描述符数量 < 126 (保留 -1 和 -2 的位置)，使用 int8_t，否则使用 int16_t
-    using LookupType = std::conditional_t<
-        (meta.non_empty_desc < 126),
-        int8_t,
-        int16_t
-    >;
+	// 1. 定义查找表使用的类型
+	// 如果描述符数量 < 126 (保留 -1 和 -2 的位置)，使用 int8_t，否则使用 int16_t
+	using LookupType = std::conditional_t<
+		(meta.non_empty_desc < 126),
+		int8_t,
+		int16_t
+	>;
 
-    static constexpr auto page_stats = []() consteval { // 统计各种页面数量
-        struct S{ size_t empty, full, single, small, bitmap; } s{};
-        for (size_t i = 0; i < page_counts.size(); ++i) {
-            uint16_t c = page_counts[i];
-            if (c == 0)                     ++s.empty;
-            else if (c == PageSize)         ++s.full;
-            else if (c == 1)                ++s.single;
-            else if (c <= SMALL_THRESHOLD)  ++s.small;
-            else                            ++s.bitmap;
-        }
-        return s;
-    }();
+	static constexpr auto page_stats = []() consteval { // 统计各种页面数量
+		struct S{ size_t empty, full, single, small, bitmap; } s{};
+		for (size_t i = 0; i < page_counts.size(); ++i) {
+			uint16_t c = page_counts[i];
+			if (c == 0)                     ++s.empty;
+			else if (c == PageSize)         ++s.full;
+			else if (c == 1)                ++s.single;
+			else if (c <= SMALL_THRESHOLD)  ++s.small;
+			else                            ++s.bitmap;
+		}
+		return s;
+	}();
 
 private:
 #pragma warning(push)
 #pragma warning(disable:4324)
-    // 实际数据容器
-    struct alignas(64) DataBlock {
-        // 查找表：映射 PageIndex -> DescriptorIndex
-        // -1: Empty, -2: Full, >=0: index in descriptors
-        std::array<LookupType, TOTAL_PAGES_NEEDED> lookup;
+	// 实际数据容器
+	struct alignas(64) DataBlock {
+		// 查找表：映射 PageIndex -> DescriptorIndex
+		// -1: Empty, -2: Full, >=0: index in descriptors
+		std::array<LookupType, TOTAL_PAGES_NEEDED> lookup;
 
-        // 页面描述符数组
-        std::array<CompactPageInfo, (meta.non_empty_desc > 0 ? meta.non_empty_desc : 1)> descriptors;
+		// 页面描述符数组
+		std::array<CompactPageInfo, (meta.non_empty_desc > 0 ? meta.non_empty_desc : 1)> descriptors;
 
-        // 位图数据池
-        std::array<uint64_t, (meta.bitmap_words > 0 ? meta.bitmap_words : 1)> bitmaps;
-    };
+		// 位图数据池
+		std::array<uint64_t, (meta.bitmap_words > 0 ? meta.bitmap_words : 1)> bitmaps;
+	};
 #pragma warning(pop)
 
-    static constexpr DataBlock build_data() {
-        DataBlock db{};
-        db.lookup.fill(static_cast<LookupType>(-1)); // 初始化为 -1 Empty
+	static constexpr DataBlock build_data() {
+		DataBlock db{};
+		db.lookup.fill(static_cast<LookupType>(-1)); // 初始化为 -1 Empty
 
-        size_t desc_idx = 0;
-        size_t bitmap_idx = 0;
+		size_t desc_idx = 0;
+		size_t bitmap_idx = 0;
 
-        for (uint32_t i = 0; i < page_counts.size(); ++i) {
-            uint16_t count = page_counts[i];
+		for (uint32_t i = 0; i < page_counts.size(); ++i) {
+			uint16_t count = page_counts[i];
 
-            if (count == 0) {
-                db.lookup[i] = -1; // Empty
-                continue;
-            }
-            if (count == FULL_PAGE_COUNT) {
-                db.lookup[i] = -2; // Full
-                continue;
-            }
+			if (count == 0) {
+				db.lookup[i] = -1; // Empty
+				continue;
+			}
+			if (count == FULL_PAGE_COUNT) {
+				db.lookup[i] = -2; // Full
+				continue;
+			}
 
-            // 1. 在查找表中记录当前页对应的描述符位置
-            db.lookup[i] = static_cast<LookupType>(desc_idx);
-            //auto& page = db.descriptors[desc_idx];
+			// 1. 在查找表中记录当前页对应的描述符位置
+			db.lookup[i] = static_cast<LookupType>(desc_idx);
+			//auto& page = db.descriptors[desc_idx];
 
-            auto [offsets, actual_count] = get_offsets_for_page(i);
+			auto [offsets, actual_count] = get_offsets_for_page(i);
 
-            if (actual_count <= SMALL_THRESHOLD) {
-                // Single, Double, Triple 都走这里
-                // make_sparse 会自动根据 count 决定 Type
-                db.descriptors[desc_idx] = CompactPageInfo::make_sparse(
-                    offsets.data(), // 假设这是指向 array 的指针
-                    actual_count
-                );
-            }
-            else {
-                // Bitmap 模式 (Count >= 4)
-                db.descriptors[desc_idx] = CompactPageInfo::make_bitmap(bitmap_idx);
+			if (actual_count <= SMALL_THRESHOLD) {
+				// Single, Double, Triple 都走这里
+				// make_sparse 会自动根据 count 决定 Type
+				db.descriptors[desc_idx] = CompactPageInfo::make_sparse(
+					offsets.data(), // 假设这是指向 array 的指针
+					actual_count
+				);
+			}
+			else {
+				// Bitmap 模式 (Count >= 4)
+				db.descriptors[desc_idx] = CompactPageInfo::make_bitmap(bitmap_idx);
 
-                // 填充位图
-                for(int k=0; k<actual_count; ++k) {
-                    uint8_t off = offsets[k];
-                    size_t word_pos = bitmap_idx + (off >> 6);
-                    db.bitmaps[word_pos] |= (1ULL << (off & 0x3F));
-                }
-                bitmap_idx += WORDS_PER_PAGE;
-            }
-            desc_idx++;
-        }
-        return db;
-    }
+				// 填充位图
+				for(int k=0; k<actual_count; ++k) {
+					uint8_t off = offsets[k];
+					size_t word_pos = bitmap_idx + (off >> 6);
+					db.bitmaps[word_pos] |= (1ULL << (off & 0x3F));
+				}
+				bitmap_idx += WORDS_PER_PAGE;
+			}
+			desc_idx++;
+		}
+		return db;
+	}
 
-    static constexpr DataBlock data = build_data();
+	static constexpr DataBlock data = build_data();
 
 public:
-    FORCE_INLINE static constexpr bool contains(char32_t cp) noexcept {
-        if (cp > Base::max_code_point) return false;
+	FORCE_INLINE static constexpr bool contains(char32_t cp) noexcept {
+		if (cp > Base::max_code_point) return false;
 
-        const size_t p_idx = cp / PageSize;
+		const size_t p_idx = cp / PageSize;
 
-        const int16_t lookup_val = data.lookup[p_idx];
+		const int16_t lookup_val = data.lookup[p_idx];
 
-        if (lookup_val == -2) return true;  // in Full page
-        if (lookup_val == -1) return false; // in Empty page
+		if (lookup_val == -2) return true;  // in Full page
+		if (lookup_val == -1) return false; // in Empty page
 
-        const uint8_t offset = cp % PageSize;
+		const uint8_t offset = cp % PageSize;
 
-        const auto& page = data.descriptors[lookup_val];
+		const auto& page = data.descriptors[lookup_val];
 
-        if (page.is_bitmap()) {
-            // 位图模式查询
-            size_t word_idx = page.get_bitmap_index() + (offset >> 6); // offset / 64
-            return (data.bitmaps[word_idx] >> (offset & 0x3F)) & 1ULL; // offset % 64
-        }
-        // 稀疏模式查询 (Single/Double/Triple)
-        return page.contains_sparse(offset);
-    }
+		if (page.is_bitmap()) {
+			// 位图模式查询
+			size_t word_idx = page.get_bitmap_index() + (offset >> 6); // offset / 64
+			return (data.bitmaps[word_idx] >> (offset & 0x3F)) & 1ULL; // offset % 64
+		}
+		// 稀疏模式查询 (Single/Double/Triple)
+		return page.contains_sparse(offset);
+	}
 
-    // 调试/统计接口
-    static constexpr size_t get_memory_usage() { return sizeof(DataBlock); }
-    static constexpr size_t get_page_size() { return PageSize; }
-    static constexpr size_t get_max_code_point() { return Base::max_code_point; }
+	// 调试/统计接口
+	static constexpr size_t get_memory_usage() { return sizeof(DataBlock); }
+	static constexpr size_t get_page_size() { return PageSize; }
+	static constexpr size_t get_max_code_point() { return Base::max_code_point; }
 
-    // 编译期可直接访问的统计量
-    static constexpr size_t stat_empty   = page_stats.empty;
-    static constexpr size_t stat_full    = page_stats.full;
-    static constexpr size_t stat_single  = page_stats.single;
-    static constexpr size_t stat_small   = page_stats.small;
-    static constexpr size_t stat_bitmap  = page_stats.bitmap;
-    static constexpr auto page_stat = page_stats;
+	// 编译期可直接访问的统计量
+	static constexpr size_t stat_empty   = page_stats.empty;
+	static constexpr size_t stat_full    = page_stats.full;
+	static constexpr size_t stat_single  = page_stats.single;
+	static constexpr size_t stat_small   = page_stats.small;
+	static constexpr size_t stat_bitmap  = page_stats.bitmap;
+	static constexpr auto page_stat = page_stats;
 
 private:
-    // 编译期完整性验证：
-    // 1) 对于 Base::ranges 中的每一个范围，所有码点都应被 contains() 包含
-    // 2) 对于 0..Base::max_code_point 范围内，若 contains(cp) 为真，则该 cp 必须落在某个 Base::ranges 中
-    static consteval bool validate_integrity() {
-        // 检查所有 ranges 内的码点都被 contains() 覆盖
-        for (const auto& r : Base::ranges) {
-            for (char32_t cp = r.start; cp <= r.end; ++cp) {
-                if (!CodePointRangeSet::contains(cp)) return false;
-            }
-        }
+	// 编译期完整性验证：
+	// 1) 对于 Base::ranges 中的每一个范围，所有码点都应被 contains() 包含
+	// 2) 对于 0..Base::max_code_point 范围内，若 contains(cp) 为真，则该 cp 必须落在某个 Base::ranges 中
+	static consteval bool validate_integrity() {
+		// 检查所有 ranges 内的码点都被 contains() 覆盖
+		for (const auto& r : Base::ranges) {
+			for (char32_t cp = r.start; cp <= r.end; ++cp) {
+				if (!CodePointRangeSet::contains(cp)) return false;
+			}
+		}
 
-        // 检查 contains() 没有包含不属于 ranges 的码点
-        if constexpr (Base::max_code_point > 0) {
-            for (char32_t cp = 0; cp <= Base::max_code_point; ++cp) {
-                if (CodePointRangeSet::contains(cp)) {
-                    bool in_range = false;
-                    for (const auto& r : Base::ranges) {
-                        if (cp >= r.start && cp <= r.end) { in_range = true; break; }
-                    }
-                    if (!in_range) return false;
-                }
-            }
-        }
+		// 检查 contains() 没有包含不属于 ranges 的码点
+		if constexpr (Base::max_code_point > 0) {
+			for (char32_t cp = 0; cp <= Base::max_code_point; ++cp) {
+				if (CodePointRangeSet::contains(cp)) {
+					bool in_range = false;
+					for (const auto& r : Base::ranges) {
+						if (cp >= r.start && cp <= r.end) { in_range = true; break; }
+					}
+					if (!in_range) return false;
+				}
+			}
+		}
 
-        return true;
-    }
+		return true;
+	}
 #if defined(_MSC_VER) && !defined(__clang__)
-    // 严格校验：确保集合完整性，防止非法数据进入编译期常量
-    static_assert(validate_integrity(), "CodePointRangeSet data validation failed: contains()/ranges mismatch");
+	// 严格校验：确保集合完整性，防止非法数据进入编译期常量
+	static_assert(validate_integrity(), "CodePointRangeSet data validation failed: contains()/ranges mismatch");
 #elif defined(__clang__)
-    // Note: Compile-time integrity check skipped in Clang to avoid complexity limits.
+	// Note: Compile-time integrity check skipped in Clang to avoid complexity limits.
 #endif
 };
 
@@ -667,28 +667,28 @@ using WhitespaceSet = CodePointRangeSet<WHITESPACE_CASES>;
 using PunctuationSet = CodePointRangeSet<PUNCTUATION_CASES>;
 using WhitespaceSetOld = CodePointRangeSet<WHITESPACE_CASES_OLD>;
 using ChineseCharSet = CodePointRangeSet<
-    Rg(0x2E80, 0x2EF3), //U+2E80 ⺀ - CJK RADICAL REPEAT ... U+2EF3 ⻳ - CJK RADICAL C-SIMPLIFIED TURTLE
-    Rg(0x2F00, 0x2FD5), //U+2F00 ⼀ - KANGXI RADICAL ONE ... U+2FD5 ⿕ - KANGXI RADICAL FLUTE
-    Rg(0x31C0, 0x31E3), //U+31C0 ㇀ - CJK STROKE T ... U+31E3 ㇣ - CJK STROKE Q
-    Rg(0x4E00, 0x9FFF),     // 基本汉字
-    Rg(0x3400, 0x4DBF),     // 扩展A
-    Rg(0x20000, 0x2EBEF),   // 扩展B-F
-    Rg(0x30000, 0x3134F),   // 扩展G
-    Rg(0x31350, 0x323AF),   // 扩展H
-    Rg(0xF900, 0xFAFF),     // 兼容汉字
-    Rg(0x2F800, 0x2FA1F)    // 兼容扩展
+	Rg(0x2E80, 0x2EF3), //U+2E80 ⺀ - CJK RADICAL REPEAT ... U+2EF3 ⻳ - CJK RADICAL C-SIMPLIFIED TURTLE
+	Rg(0x2F00, 0x2FD5), //U+2F00 ⼀ - KANGXI RADICAL ONE ... U+2FD5 ⿕ - KANGXI RADICAL FLUTE
+	Rg(0x31C0, 0x31E3), //U+31C0 ㇀ - CJK STROKE T ... U+31E3 ㇣ - CJK STROKE Q
+	Rg(0x4E00, 0x9FFF),     // 基本汉字
+	Rg(0x3400, 0x4DBF),     // 扩展A
+	Rg(0x20000, 0x2EBEF),   // 扩展B-F
+	Rg(0x30000, 0x3134F),   // 扩展G
+	Rg(0x31350, 0x323AF),   // 扩展H
+	Rg(0xF900, 0xFAFF),     // 兼容汉字
+	Rg(0x2F800, 0x2FA1F)    // 兼容扩展
 >;
 
 FORCE_INLINE constexpr bool is_unicode_whitespace(char32_t code_point) {
-    return WhitespaceSet::contains(code_point);
+	return WhitespaceSet::contains(code_point);
 }
 
 FORCE_INLINE constexpr bool is_unicode_punctuation(char32_t code_point) {
-    return PunctuationSet::contains(code_point);
+	return PunctuationSet::contains(code_point);
 }
 
 FORCE_INLINE constexpr bool is_chinese_character(char32_t code_point) {
-    return ChineseCharSet::contains(code_point);
+	return ChineseCharSet::contains(code_point);
 }
 
 // ===== 边界验证（精简）因为类的尾部已经使用编译时函数validate_integrity()自查完成 =====
@@ -734,10 +734,10 @@ namespace {
 // 核心处理函数（不含 SEH），提取出来以规避 MSVC C2712：
 // SEH (__try/__except) 不能与具有析构函数的 C++ 对象共存于同一函数。
 struct CharacterCounts {
-    size_t chinese;
-    size_t punctuation;
-    size_t space;
-    size_t all;
+	size_t chinese;
+	size_t punctuation;
+	size_t space;
+	size_t all;
 };
 
 // 短于此长度的文本直接串行处理，避免线程开销
@@ -745,248 +745,246 @@ constexpr size_t MIN_PARALLEL_THRESHOLD = 20 * 1024;
 
 // 串行处理短串（无需线程开销，减少延迟）
 static CharacterCounts CountCharacterTypesSerial(const char* utf8Text, size_t length) {
-    size_t total_c = 0, total_p = 0, total_s = 0, total_all = 0;
-    const char* ptr = utf8Text;
-    const char* const end = utf8Text + length;
-    while (ptr < end) {
-        const char32_t cp = cntchr_utf8_next(ptr);
-        total_s += static_cast<size_t>(is_unicode_whitespace(cp));
-        total_c += static_cast<size_t>(is_chinese_character(cp));
-        total_p += static_cast<size_t>(is_unicode_punctuation(cp));
-        total_all++;
-    }
-    return { total_c, total_p, total_s, total_all };
+	size_t total_c = 0, total_p = 0, total_s = 0, total_all = 0;
+	const char* ptr = utf8Text;
+	const char* const end = utf8Text + length;
+	while (ptr < end) {
+		const char32_t cp = cntchr_utf8_next(ptr);
+		total_s += static_cast<size_t>(is_unicode_whitespace(cp));
+		total_c += static_cast<size_t>(is_chinese_character(cp));
+		total_p += static_cast<size_t>(is_unicode_punctuation(cp));
+		total_all++;
+	}
+	return { total_c, total_p, total_s, total_all };
 }
 
 CharacterCounts CountCharacterTypesImpl(const char* utf8Text, size_t length,
-    std::stop_token token = std::stop_token{}) {
+	std::stop_token token = std::stop_token{}) {
 #pragma warning(push)
 #pragma warning(disable:4324)
-    // 定义计数器结构体，强制 64 字节对齐 (Cache Line Size)
-    // 这确保了不同线程修改不同的结构体实例时，不会发生缓存一致性冲突
-    struct alignas(64) ThreadCounters {
-        size_t chinese = 0;
-        size_t punctuation = 0;
-        size_t space = 0;
-        size_t all = 0;
-        // 结构体大小为 32 字节 (4个 size_t)，剩余 32 字节作为填充，防止与下一个结构体在同一行
-    };
+	// 定义计数器结构体，强制 64 字节对齐 (Cache Line Size)
+	// 这确保了不同线程修改不同的结构体实例时，不会发生缓存一致性冲突
+	struct alignas(64) ThreadCounters {
+		size_t chinese = 0;
+		size_t punctuation = 0;
+		size_t space = 0;
+		size_t all = 0;
+		// 结构体大小为 32 字节 (4个 size_t)，剩余 32 字节作为填充，防止与下一个结构体在同一行
+	};
 #pragma warning(pop)
 
-    constexpr size_t BATCH_CODEPOINTS = 4096;
+	constexpr size_t BATCH_CODEPOINTS = 4096;
 
-    // --- 并行处理长串 (使用 C++20 std::jthread + std::stop_token) ---
-    const unsigned int num_threads = std::max(1u, std::thread::hardware_concurrency());
-    const size_t chunk_size = length / num_threads;
+	// --- 并行处理长串 (使用 C++20 std::jthread + std::stop_token) ---
+	const unsigned int num_threads = std::max(1u, std::thread::hardware_concurrency());
+	const size_t chunk_size = length / num_threads;
 
-    std::atomic<size_t> atomic_c{0}, atomic_p{0}, atomic_s{0}, atomic_all{0};
+	std::atomic<size_t> atomic_c{0}, atomic_p{0}, atomic_s{0}, atomic_all{0};
 
-    {
-        std::vector<std::jthread> threads;
-        threads.reserve(num_threads);
+	{
+		std::vector<std::jthread> threads;
+		threads.reserve(num_threads);
 
-        for (unsigned int t = 0; t < num_threads; ++t) {
-            const size_t my_start_byte = t * chunk_size;
-            const size_t my_end_byte = (t == num_threads - 1) ? length : (t + 1) * chunk_size;
+		for (unsigned int t = 0; t < num_threads; ++t) {
+			const size_t my_start_byte = t * chunk_size;
+			const size_t my_end_byte = (t == num_threads - 1) ? length : (t + 1) * chunk_size;
 
-            threads.emplace_back([&, token, t, num_threads, my_start_byte, my_end_byte]() {
-                ThreadCounters local;
-                alignas(64) char32_t buffer[BATCH_CODEPOINTS];
+			threads.emplace_back([&, token, t, num_threads, my_start_byte, my_end_byte]() {
+				ThreadCounters local;
+				alignas(64) char32_t buffer[BATCH_CODEPOINTS];
 
-                const char* ptr = utf8Text + my_start_byte;
-                const char* limit = utf8Text + my_end_byte;
+				const char* ptr = utf8Text + my_start_byte;
+				const char* limit = utf8Text + my_end_byte;
 
-                // 1. 除了 0 号线程外，所有线程都必须跳过开头的延续字节
-                if (t != 0) {
-                    while (ptr < limit && (static_cast<unsigned char>(*ptr) & 0xC0) == 0x80) {
-                        ++ptr;
-                    }
-                }
+				// 1. 除了 0 号线程外，所有线程都必须跳过开头的延续字节
+				if (t != 0) {
+					while (ptr < limit && (static_cast<unsigned char>(*ptr) & 0xC0) == 0x80) {
+						++ptr;
+					}
+				}
 
-                // 2. 除了最后一个线程外，所有线程都要读取完整的末尾字符
-                if (t != num_threads - 1) {
-                    while (limit < utf8Text + length && (static_cast<unsigned char>(*limit) & 0xC0) == 0x80) {
-                        ++limit;
-                    }
-                }
+				// 2. 除了最后一个线程外，所有线程都要读取完整的末尾字符
+				if (t != num_threads - 1) {
+					while (limit < utf8Text + length && (static_cast<unsigned char>(*limit) & 0xC0) == 0x80) {
+						++limit;
+					}
+				}
 
-                while (ptr < limit) {
-                    // 每轮循环检查取消标志
-                    if (token.stop_requested()) {
-                        return;
-                    }
+				while (ptr < limit) {
+					// 每轮循环检查取消标志
+					if (token.stop_requested()) {
+						return;
+					}
 
-                    const size_t remaining = limit - ptr;
-                    size_t input_this_round = std::min(remaining, BATCH_CODEPOINTS);
+					const size_t remaining = limit - ptr;
+					size_t input_this_round = std::min(remaining, BATCH_CODEPOINTS);
 
-                    while (input_this_round > 0 &&
-                        (static_cast<unsigned char>(ptr[input_this_round]) & 0xC0) == 0x80) {
-                        --input_this_round;
-                    }
+					while (input_this_round > 0 &&
+						(static_cast<unsigned char>(ptr[input_this_round]) & 0xC0) == 0x80) {
+						--input_this_round;
+					}
 
-                    const std::string_view chunk(ptr, input_this_round);
-                    const size_t count = Scintilla::Internal::UTF32Length(chunk);
-                    Scintilla::Internal::UTF32FromUTF8(chunk, reinterpret_cast<unsigned int*>(buffer), count);
+					const std::string_view chunk(ptr, input_this_round);
+					const size_t count = Scintilla::Internal::UTF32Length(chunk);
+					Scintilla::Internal::UTF32FromUTF8(chunk, reinterpret_cast<unsigned int*>(buffer), count);
 
-                    for (size_t i = 0; i < count; ++i) {
-                        const char32_t cp = buffer[i];
-                        local.space += is_unicode_whitespace(cp);
-                        local.chinese += is_chinese_character(cp);
-                        local.punctuation += is_unicode_punctuation(cp);
-                        ++local.all;
-                    }
+					for (size_t i = 0; i < count; ++i) {
+						const char32_t cp = buffer[i];
+						local.space += is_unicode_whitespace(cp);
+						local.chinese += is_chinese_character(cp);
+						local.punctuation += is_unicode_punctuation(cp);
+						++local.all;
+					}
 
-                    ptr += input_this_round;
-                }
+					ptr += input_this_round;
+				}
 
-                atomic_c.fetch_add(local.chinese, std::memory_order_relaxed);
-                atomic_p.fetch_add(local.punctuation, std::memory_order_relaxed);
-                atomic_s.fetch_add(local.space, std::memory_order_relaxed);
-                atomic_all.fetch_add(local.all, std::memory_order_relaxed);
-            });
-        }
-    } // 作用域结束 -> std::jthread 析构自动 join
+				atomic_c.fetch_add(local.chinese, std::memory_order_relaxed);
+				atomic_p.fetch_add(local.punctuation, std::memory_order_relaxed);
+				atomic_s.fetch_add(local.space, std::memory_order_relaxed);
+				atomic_all.fetch_add(local.all, std::memory_order_relaxed);
+			});
+		}
+	} // 作用域结束 -> std::jthread 析构自动 join
 
-    return {
-        atomic_c.load(std::memory_order_relaxed),
-        atomic_p.load(std::memory_order_relaxed),
-        atomic_s.load(std::memory_order_relaxed),
-        atomic_all.load(std::memory_order_relaxed)
-    };
+	return {
+		atomic_c.load(std::memory_order_relaxed),
+		atomic_p.load(std::memory_order_relaxed),
+		atomic_s.load(std::memory_order_relaxed),
+		atomic_all.load(std::memory_order_relaxed)
+	};
 }
 
 // 非 SEH 桥接：将原始指针转为 stop_token，短串直接串行，长串走并行
 static CharacterCounts CountBridge(const char* utf8Text, size_t length,
-    const std::stop_token* token_ptr) {
-    const auto token = token_ptr ? *token_ptr : std::stop_token{};
-    if (length < MIN_PARALLEL_THRESHOLD) {
-        return CountCharacterTypesSerial(utf8Text, length);
-    }
-    return CountCharacterTypesImpl(utf8Text, length, token);
+	const std::stop_token* token_ptr) {
+	const auto token = token_ptr ? *token_ptr : std::stop_token{};
+	if (length < MIN_PARALLEL_THRESHOLD) {
+		return CountCharacterTypesSerial(utf8Text, length);
+	}
+	return CountCharacterTypesImpl(utf8Text, length, token);
 }
 
 // SEH 安全包装：只接受原始指针，避免 MSVC C2712
 //（__try/__except 与带析构函数的 std::stop_token 不能共存于同一函数）
 static bool CountSehSafe(const char* utf8Text, size_t length,
-    const std::stop_token* token_ptr, CharacterCounts& out) noexcept {
-    __try {
-        out = CountBridge(utf8Text, length, token_ptr);
-        return true;
-    }
-    __except (EXCEPTION_EXECUTE_HANDLER) {
-        return false;
-    }
+	const std::stop_token* token_ptr, CharacterCounts& out) noexcept {
+	__try {
+		out = CountBridge(utf8Text, length, token_ptr);
+		return true;
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER) {
+		return false;
+	}
 }
 
 } // namespace
 
 void CountCharacterTypes(const char* utf8Text, size_t length,
-    size_t* chinese,
-    size_t* punctuation,
-    size_t* nonChineseNonSpace,
-    size_t* space,
-    std::stop_token token) {
-    if (!utf8Text || !chinese || !punctuation || !nonChineseNonSpace || !space || length == 0) {
-        *chinese = *punctuation = *nonChineseNonSpace = *space = 0;
-        return;
-    }
+	size_t* chinese,
+	size_t* punctuation,
+	size_t* nonChineseNonSpace,
+	size_t* space,
+	std::stop_token token) {
+	if (!utf8Text || !chinese || !punctuation || !nonChineseNonSpace || !space || length == 0) {
+		*chinese = *punctuation = *nonChineseNonSpace = *space = 0;
+		return;
+	}
 
-    size_t total_c = 0, total_p = 0, total_s = 0, total_all = 0;
+	size_t total_c = 0, total_p = 0, total_s = 0, total_all = 0;
 
-    CharacterCounts counts;
-    if (!CountSehSafe(utf8Text, length, &token, counts)) {
-        *chinese = *punctuation = *nonChineseNonSpace = *space = 0;
-        return;
-    }
+	CharacterCounts counts;
+	if (!CountSehSafe(utf8Text, length, &token, counts)) {
+		*chinese = *punctuation = *nonChineseNonSpace = *space = 0;
+		return;
+	}
 
-    // 如果被取消则返回零（无需进一步处理）
-    if (token.stop_requested()) {
-        *chinese = *punctuation = *nonChineseNonSpace = *space = 0;
-        return;
-    }
+	// 如果被取消则返回零（无需进一步处理）
+	if (token.stop_requested()) {
+		*chinese = *punctuation = *nonChineseNonSpace = *space = 0;
+		return;
+	}
 
-    total_c = counts.chinese;
-    total_p = counts.punctuation;
-    total_s = counts.space;
-    total_all = counts.all;
+	total_c = counts.chinese;
+	total_p = counts.punctuation;
+	total_s = counts.space;
+	total_all = counts.all;
 
-    *chinese = total_c;
-    *punctuation = total_p;
-    *space = total_s;
-    *nonChineseNonSpace = (total_c + total_p + total_s) <= total_all ?
-        total_all - total_c - total_p - total_s :
-        0;
+	*chinese = total_c;
+	*punctuation = total_p;
+	*space = total_s;
+	*nonChineseNonSpace = (total_c + total_p + total_s) <= total_all ?
+		total_all - total_c - total_p - total_s :
+		0;
 }
 
-std::string& RemoveUnnecessaryLeadingCharacters(std::string& str) noexcept {
-    if (str.empty()) return str;
+size_t RemoveUnnecessaryLeadingCharacters(const char* utf8Text, size_t length) noexcept {
+	if (length == 0) {
+		return 0;
+	}
 
-    // 状态机常量
-    enum : uint8_t { ST_TRACKING = 0, ST_LOCKED = 1 };
-    enum : uint8_t { IN_C = 0, IN_W = 1, IN_O = 2 };
+	// 状态机常量
+	enum : uint8_t { ST_TRACKING = 0, ST_LOCKED = 1 };
+	enum : uint8_t { IN_C = 0, IN_W = 1, IN_O = 2 };
 
-    // NEXT_STATE[当前状态][输入类型]
-    static constexpr uint8_t U8NEXT_STATE[2][3] = {
-        /* ST_TRACKING: 遇到中文或空白保持追踪，遇到其他则锁定 */
-        { ST_TRACKING, ST_TRACKING, ST_LOCKED },
-        /* ST_LOCKED: 只有遇到中文才能解锁回到追踪状态 */
-        { ST_TRACKING, ST_LOCKED,   ST_LOCKED }
-    };
+	// NEXT_STATE[当前状态][输入类型]
+	static constexpr uint8_t U8NEXT_STATE[2][3] = {
+		/* ST_TRACKING: 遇到中文或空白保持追踪，遇到其他则锁定 */
+		{ ST_TRACKING, ST_TRACKING, ST_LOCKED },
+		/* ST_LOCKED: 只有遇到中文才能解锁回到追踪状态 */
+		{ ST_TRACKING, ST_LOCKED,   ST_LOCKED }
+	};
 
-    // ACTION[当前状态][输入类型] -> 是否更新 cut_pos
-    static constexpr uint8_t U8ACTION[2][3] = {
-        /* ST_TRACKING: 中文(1), 空白(1), 其他(0) */
-        { 1, 1, 0 },
-        /* ST_LOCKED: 中文(1), 空白(0), 其他(0) */
-        { 1, 0, 0 }
-    };
+	// ACTION[当前状态][输入类型] -> 是否更新 cut_pos
+	static constexpr uint8_t U8ACTION[2][3] = {
+		/* ST_TRACKING: 中文(1), 空白(1), 其他(0) */
+		{ 1, 1, 0 },
+		/* ST_LOCKED: 中文(1), 空白(0), 其他(0) */
+		{ 1, 0, 0 }
+	};
 
-    const char* const start_ptr = str.data();
-    const char* const end_ptr = start_ptr + str.size();
-    const char* it = start_ptr;
+	const char* const start_ptr = utf8Text;
+	const char* const end_ptr = start_ptr + length;
+	const char* it = start_ptr;
 
-    size_t cut_pos = 0;
-    uint8_t state = ST_TRACKING;
+	size_t cut_pos = 0;
+	uint8_t state = ST_TRACKING;
 
-    // 使用 Scintilla 内置函数追求极致速度，前提是输入已校验
-    while (it < end_ptr) {
-        const uint32_t cp = cntchr_utf8_next(it); // it 会被移动到下一个码点位置
+	// 使用 Scintilla 内置函数追求极致速度，前提是输入已校验
+	while (it < end_ptr) {
+		const uint32_t cp = cntchr_utf8_next(it);
 
-        // 1. 输入分类 (无分支逻辑)
-        uint32_t is_c = static_cast<uint32_t>(is_chinese_character(cp));
-        uint32_t is_w = static_cast<uint32_t>(is_unicode_whitespace(cp));
+		// 1. 输入分类 (无分支逻辑)
+		uint32_t is_c = static_cast<uint32_t>(is_chinese_character(cp));
+		uint32_t is_w = static_cast<uint32_t>(is_unicode_whitespace(cp));
 
-        // in: 0=Chinese, 1=Whitespace, 2=Other
-        // 利用互斥性：is_c=1 则 in=0; is_c=0,is_w=1 则 in=1; 均为0 则 in=2
-        uint32_t in = (is_c ^ 1) * (2 - is_w);
+		// in: 0=Chinese, 1=Whitespace, 2=Other
+		// 利用互斥性：is_c=1 则 in=0; is_c=0,is_w=1 则 in=1; 均为0 则 in=2
+		uint32_t in = (is_c ^ 1) * (2 - is_w);
 
-        // 2. 更新剪切位置 (无分支计算)
-        // 计算当前码点结束相对于起始的偏移
-        size_t cp_end_offset = it - start_ptr;
-        uint8_t act = U8ACTION[state][in];
+		// 2. 更新剪切位置 (无分支计算)
+		// 计算当前码点结束相对于起始的偏移
+		size_t cp_end_offset = it - start_ptr;
+		uint8_t act = U8ACTION[state][in];
 
-        // 如果 act 为 1，则更新 cut_pos 为当前码点的末尾
-        cut_pos = cut_pos + act * (cp_end_offset - cut_pos);
+		// 如果 act 为 1，则更新 cut_pos 为当前码点的末尾
+		cut_pos = cut_pos + act * (cp_end_offset - cut_pos);
 
-        // 3. 状态转换
-        state = U8NEXT_STATE[state][in];
-    }
+		// 3. 状态转换
+		state = U8NEXT_STATE[state][in];
+	}
 
-    if (cut_pos > 0) {
-        str.erase(0, cut_pos);
-    }
-
-    return str;
+	return cut_pos;
 }
 
 std::string& RemoveUnnecessaryLeadingCharacters_old(std::string& str) {
-    if (str.empty()) return str;
+	if (str.empty()) return str;
 
-    std::string_view sv = str;
-    const char* const original_start = sv.data();
-    const char* last_chinese_end = nullptr;
+	std::string_view sv = str;
+	const char* const original_start = sv.data();
+	const char* last_chinese_end = nullptr;
 
-    // 1. 寻找最后一个中文字符的结束位置
+	// 1. 寻找最后一个中文字符的结束位置
 	{
 		const char* const end_ptr = sv.data() + sv.size();
 		const char* pos = sv.data();
@@ -1001,13 +999,13 @@ std::string& RemoveUnnecessaryLeadingCharacters_old(std::string& str) {
 		}
 	}
 
-    // 2. 缩小 view 范围：如果有中文，从中文后开始；否则保持原状
-    if (last_chinese_end) {
-        size_t offset = last_chinese_end - original_start;
-        sv.remove_prefix(offset);
-    }
+	// 2. 缩小 view 范围：如果有中文，从中文后开始；否则保持原状
+	if (last_chinese_end) {
+		size_t offset = last_chinese_end - original_start;
+		sv.remove_prefix(offset);
+	}
 
-    // 3. 跳过开头的空白字符
+	// 3. 跳过开头的空白字符
 	{
 		const char* const end_ptr = sv.data() + sv.size();
 		const char* space_pos = sv.data();
@@ -1025,7 +1023,45 @@ std::string& RemoveUnnecessaryLeadingCharacters_old(std::string& str) {
 		size_t final_offset = space_pos - original_start;
 		str.erase(0, final_offset);
 	}
-    return str;
+	return str;
+}
+
+std::pair<size_t, size_t> TrimWhitespace(const char* utf8Text, size_t length) noexcept {
+	if (length == 0) {
+		return {0, 0};
+	}
+
+	const char* const end = utf8Text + length;
+
+	// 从左向右跳过空白
+	const char* left = utf8Text;
+	while (left < end) {
+		const char* saved = left;
+		const char32_t cp = cntchr_utf8_next(left);
+		if (!is_unicode_whitespace(cp)) {
+			left = saved; // 回退到第一个非空白字符
+			break;
+		}
+	}
+	if (left >= end) {
+		return {length, 0}; // 全空白
+	}
+
+	// 从右向左跳过空白：重新遍历找到最后一个非空白字符的结束位置
+	const char* lastNonSpace = nullptr;
+	{
+		const char* it = utf8Text;
+		while (it < end) {
+			const char32_t cp = cntchr_utf8_next(it);
+			if (!is_unicode_whitespace(cp)) {
+				lastNonSpace = it; // 记录非空白字符之后的偏移
+			}
+		}
+	}
+
+	const size_t startOffset = static_cast<size_t>(left - utf8Text);
+	const size_t resultLength = static_cast<size_t>(lastNonSpace - left);
+	return {startOffset, resultLength};
 }
 
 #include <chrono>
@@ -1036,307 +1072,310 @@ std::string& RemoveUnnecessaryLeadingCharacters_old(std::string& str) {
 constexpr int RANDOM_SEED = 42;
 
 std::string RunPerformanceTest() {
-    // 1. 生成测试数据 (约 10MB)
-    const size_t TARGET_SIZE = 10 * 1024 * 1024;
-    std::string test_data;
-    test_data.reserve(TARGET_SIZE);
+	// 1. 生成测试数据 (约 10MB)
+	const size_t TARGET_SIZE = 10 * 1024 * 1024;
+	std::string test_data;
+	test_data.reserve(TARGET_SIZE);
 
-    std::mt19937 rng(RANDOM_SEED);
-    // 定义权重：30% 汉字, 40% 英文/数字, 15% 标点, 15% 空格
-    std::uniform_int_distribution<int> dist(0, 99);
+	std::mt19937 rng(RANDOM_SEED);
+	// 定义权重：30% 汉字, 40% 英文/数字, 15% 标点, 15% 空格
+	std::uniform_int_distribution<int> dist(0, 99);
 
-    // 准备一些样本
-    std::vector<std::string> sample_hz = {"你", "好", "世", "界", "编", "程", "之", "美"};
-    std::vector<std::string> sample_en = {"H", "e", "l", "l", "o", "W", "o", "r", "l", "d", "1", "2", "3"};
-    std::vector<std::string> sample_punc = {"，", "。", "！", "？", "；", "：", "（", "）"};
-    std::vector<std::string> sample_space = {" ", "\n", "\t", "\r"};
+	// 准备一些样本
+	std::vector<std::string> sample_hz = {"你", "好", "世", "界", "编", "程", "之", "美"};
+	std::vector<std::string> sample_en = {"H", "e", "l", "l", "o", "W", "o", "r", "l", "d", "1", "2", "3"};
+	std::vector<std::string> sample_punc = {"，", "。", "！", "？", "；", "：", "（", "）"};
+	std::vector<std::string> sample_space = {" ", "\n", "\t", "\r"};
 
-    while (test_data.size() < TARGET_SIZE) {
-        int roll = dist(rng);
-        if (roll < 30) test_data += sample_hz[rng() % sample_hz.size()];
-        else if (roll < 70) test_data += sample_en[rng() % sample_en.size()];
-        else if (roll < 85) test_data += sample_punc[rng() % sample_punc.size()];
-        else test_data += sample_space[rng() % sample_space.size()];
-    }
+	while (test_data.size() < TARGET_SIZE) {
+		int roll = dist(rng);
+		if (roll < 30) test_data += sample_hz[rng() % sample_hz.size()];
+		else if (roll < 70) test_data += sample_en[rng() % sample_en.size()];
+		else if (roll < 85) test_data += sample_punc[rng() % sample_punc.size()];
+		else test_data += sample_space[rng() % sample_space.size()];
+	}
 
-    // 2. 预热 (Warm-up)
-    size_t c, p, n, s;
-    CountCharacterTypes(test_data.data(), test_data.size(), &c, &p, &n, &s);
+	// 2. 预热 (Warm-up)
+	size_t c, p, n, s;
+	CountCharacterTypes(test_data.data(), test_data.size(), &c, &p, &n, &s);
 
-    // 3. 正式测试 (跑 300 遍)
-    const int ITERATIONS = 300;
-    auto start = std::chrono::high_resolution_clock::now();
+	// 3. 正式测试 (跑 300 遍)
+	const int ITERATIONS = 300;
+	auto start = std::chrono::high_resolution_clock::now();
 
-    for (int i = 0; i < ITERATIONS; ++i) {
-        CountCharacterTypes(test_data.data(), test_data.size(), &c, &p, &n, &s);
-    }
+	for (int i = 0; i < ITERATIONS; ++i) {
+		CountCharacterTypes(test_data.data(), test_data.size(), &c, &p, &n, &s);
+	}
 
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double, std::milli> total_ms = end - start;
+	auto end = std::chrono::high_resolution_clock::now();
+	std::chrono::duration<double, std::milli> total_ms = end - start;
 
-    double avg_ms = total_ms.count() / ITERATIONS;
-    double throughput_mb_s = (static_cast<double>(TARGET_SIZE) / (1024 * 1024)) / (avg_ms / 1000.0);
-    size_t total_chars = c + p + n + s;
+	double avg_ms = total_ms.count() / ITERATIONS;
+	double throughput_mb_s = (static_cast<double>(TARGET_SIZE) / (1024 * 1024)) / (avg_ms / 1000.0);
+	size_t total_chars = c + p + n + s;
 
-    // 4. 使用 std::format 构造返回信息
-    return std::format(
-        "--- Unicode Analysis Benchmark ---\n"
-        "Data Size:      {:.2f} MB\n"
-        "Total Codepoints: {}\n"
-        "Iterations:      {}\n"
-        "----------------------------------\n"
-        "Total Time:      {:.2f} ms\n"
-        "Avg Time/Pass:   {:.4f} ms\n"
-        "Throughput:      {:.2f} MB/s\n"
-        "----------------------------------\n"
-        "Counts - Hanzi: {}, Punct: {}, Space: {}, Other: {}\n",
-        static_cast<double>(TARGET_SIZE) / (1024 * 1024),
-        total_chars,
-        ITERATIONS,
-        total_ms.count(),
-        avg_ms,
-        throughput_mb_s,
-        c, p, s, n
-    );
+	// 4. 使用 std::format 构造返回信息
+	return std::format(
+		"--- Unicode Analysis Benchmark ---\n"
+		"Data Size:      {:.2f} MB\n"
+		"Total Codepoints: {}\n"
+		"Iterations:      {}\n"
+		"----------------------------------\n"
+		"Total Time:      {:.2f} ms\n"
+		"Avg Time/Pass:   {:.4f} ms\n"
+		"Throughput:      {:.2f} MB/s\n"
+		"----------------------------------\n"
+		"Counts - Hanzi: {}, Punct: {}, Space: {}, Other: {}\n",
+		static_cast<double>(TARGET_SIZE) / (1024 * 1024),
+		total_chars,
+		ITERATIONS,
+		total_ms.count(),
+		avg_ms,
+		throughput_mb_s,
+		c, p, s, n
+	);
 }
 
 // 辅助函数：位图/集合大小和最大码点查询（调试用）
 std::string getBitsetInfo() {
-    auto setstr = [](std::string_view name, size_t mem, size_t max_code_point,
-        size_t pagesz, size_t empty, size_t full, size_t single, size_t small, size_t bitmap) {
-            return std::format(
-                "{:15} BitsetSize {:>4} B, Max Codepoint 0x{:06x}, PageSize {}\n"
-                "Pages: Empty {:3}, Full {:3}, Single {:3}, Small {:3}, Bitmap {:3}\n\n",
-                name, mem, max_code_point, pagesz, empty, full, single, small, bitmap);
-    };
+	auto setstr = [](std::string_view name, size_t mem, size_t max_code_point,
+		size_t pagesz, size_t empty, size_t full, size_t single, size_t small, size_t bitmap) {
+			return std::format(
+				"{:15} BitsetSize {:>4} B, Max Codepoint 0x{:06x}, PageSize {}\n"
+				"Pages: Empty {:3}, Full {:3}, Single {:3}, Small {:3}, Bitmap {:3}\n\n",
+				name, mem, max_code_point, pagesz, empty, full, single, small, bitmap);
+	};
 
-    return setstr("WhitespaceSet", WhitespaceSet::get_memory_usage(), WhitespaceSet::get_max_code_point(),
-        WhitespaceSet::get_page_size(),
-        WhitespaceSet::stat_empty,
-        WhitespaceSet::stat_full,
-        WhitespaceSet::stat_single,
-        WhitespaceSet::stat_small,
-        WhitespaceSet::stat_bitmap
-    ) + setstr("PunctuationSet", PunctuationSet::get_memory_usage(), PunctuationSet::get_max_code_point(),
-        PunctuationSet::get_page_size(),
-        PunctuationSet::stat_empty,
-        PunctuationSet::stat_full,
-        PunctuationSet::stat_single,
-        PunctuationSet::stat_small,
-        PunctuationSet::stat_bitmap
-    ) + setstr("ChineseCharSet", ChineseCharSet::get_memory_usage(), ChineseCharSet::get_max_code_point(),
-        ChineseCharSet::get_page_size(),
-        ChineseCharSet::stat_empty,
-        ChineseCharSet::stat_full,
-        ChineseCharSet::stat_single,
-        ChineseCharSet::stat_small,
-        ChineseCharSet::stat_bitmap
-    ) + RunPerformanceTest();
+	return setstr("WhitespaceSet", WhitespaceSet::get_memory_usage(), WhitespaceSet::get_max_code_point(),
+		WhitespaceSet::get_page_size(),
+		WhitespaceSet::stat_empty,
+		WhitespaceSet::stat_full,
+		WhitespaceSet::stat_single,
+		WhitespaceSet::stat_small,
+		WhitespaceSet::stat_bitmap
+	) + setstr("PunctuationSet", PunctuationSet::get_memory_usage(), PunctuationSet::get_max_code_point(),
+		PunctuationSet::get_page_size(),
+		PunctuationSet::stat_empty,
+		PunctuationSet::stat_full,
+		PunctuationSet::stat_single,
+		PunctuationSet::stat_small,
+		PunctuationSet::stat_bitmap
+	) + setstr("ChineseCharSet", ChineseCharSet::get_memory_usage(), ChineseCharSet::get_max_code_point(),
+		ChineseCharSet::get_page_size(),
+		ChineseCharSet::stat_empty,
+		ChineseCharSet::stat_full,
+		ChineseCharSet::stat_single,
+		ChineseCharSet::stat_small,
+		ChineseCharSet::stat_bitmap
+	) + RunPerformanceTest();
 
 }
 
 #pragma warning(push)
 #pragma warning(disable: 4566)  // Emoji char
 std::string RunTests() {
-    // 辅助：将本地编码（ACP，简体中文下为 GBK）字符串转为 UTF-8
-    auto acp_to_utf8 = [](const char* s) -> std::string {
-        int wlen = MultiByteToWideChar(CP_ACP, 0, s, -1, nullptr, 0);
-        if (wlen <= 0) return s;
-        std::wstring ws(static_cast<size_t>(wlen), L'\0');
-        MultiByteToWideChar(CP_ACP, 0, s, -1, ws.data(), wlen);
-        int u8len = WideCharToMultiByte(CP_UTF8, 0, ws.data(), -1, nullptr, 0, nullptr, nullptr);
-        if (u8len <= 0) return s;
-        std::string u8(static_cast<size_t>(u8len), '\0');
-        WideCharToMultiByte(CP_UTF8, 0, ws.data(), -1, u8.data(), u8len, nullptr, nullptr);
-        if (!u8.empty() && u8.back() == '\0') u8.pop_back();
-        return u8;
-    };
+	// 辅助：将本地编码（ACP，简体中文下为 GBK）字符串转为 UTF-8
+	auto acp_to_utf8 = [](const char* s) -> std::string {
+		int wlen = MultiByteToWideChar(CP_ACP, 0, s, -1, nullptr, 0);
+		if (wlen <= 0) return s;
+		std::wstring ws(static_cast<size_t>(wlen), L'\0');
+		MultiByteToWideChar(CP_ACP, 0, s, -1, ws.data(), wlen);
+		int u8len = WideCharToMultiByte(CP_UTF8, 0, ws.data(), -1, nullptr, 0, nullptr, nullptr);
+		if (u8len <= 0) return s;
+		std::string u8(static_cast<size_t>(u8len), '\0');
+		WideCharToMultiByte(CP_UTF8, 0, ws.data(), -1, u8.data(), u8len, nullptr, nullptr);
+		if (!u8.empty() && u8.back() == '\0') u8.pop_back();
+		return u8;
+	};
 
-    // 辅助：将宽字符串（含 \U 转义的补充字符）转为 UTF-8
-    auto wcs_to_utf8 = [](const wchar_t* ws) -> std::string {
-        int u8len = WideCharToMultiByte(CP_UTF8, 0, ws, -1, nullptr, 0, nullptr, nullptr);
-        if (u8len <= 0) return "";
-        std::string u8(static_cast<size_t>(u8len), '\0');
-        WideCharToMultiByte(CP_UTF8, 0, ws, -1, u8.data(), u8len, nullptr, nullptr);
-        if (!u8.empty() && u8.back() == '\0') u8.pop_back();
-        return u8;
-    };
+	// 辅助：将宽字符串（含 \U 转义的补充字符）转为 UTF-8
+	auto wcs_to_utf8 = [](const wchar_t* ws) -> std::string {
+		int u8len = WideCharToMultiByte(CP_UTF8, 0, ws, -1, nullptr, 0, nullptr, nullptr);
+		if (u8len <= 0) return "";
+		std::string u8(static_cast<size_t>(u8len), '\0');
+		WideCharToMultiByte(CP_UTF8, 0, ws, -1, u8.data(), u8len, nullptr, nullptr);
+		if (!u8.empty() && u8.back() == '\0') u8.pop_back();
+		return u8;
+	};
 
-    struct TestCase {
-        std::string input;
-        std::string expected;
-        std::string desc;
-    };
-    std::vector<TestCase> cases = {
-        // 1. 空白与普通字符
-        {"", "", "Empty string"},
-        {"   ", "", "Pure whitespaces"},
-        {"abc", "abc", "No Chinese, no leading WS"},
-        {"  abc", "abc", "No Chinese, leading WS"},
+	struct TestCase {
+		std::string input;
+		std::string expected;
+		std::string desc;
+	};
+	std::vector<TestCase> cases = {
+		// 1. 空白与普通字符
+		{"", "", "Empty string"},
+		{"   ", "", "Pure whitespaces"},
+		{"abc", "abc", "No Chinese, no leading WS"},
+		{"  abc", "abc", "No Chinese, leading WS"},
 
-        // 2. 中文基本逻辑 (ACP → UTF-8 运行时转换)
-        {acp_to_utf8("你好"), "", "Pure Chinese"},
-        {acp_to_utf8("你好 "), "", "Chinese followed by WS at end"},
-        {acp_to_utf8("你好 abc"), "abc", "Chinese followed by WS and text"},
-        {acp_to_utf8("  你好 abc"), "abc", "Leading WS and Chinese"},
+		// 2. 中文基本逻辑 (ACP → UTF-8 运行时转换)
+		{acp_to_utf8("你好"), "", "Pure Chinese"},
+		{acp_to_utf8("你好 "), "", "Chinese followed by WS at end"},
+		{acp_to_utf8("你好 abc"), "abc", "Chinese followed by WS and text"},
+		{acp_to_utf8("  你好 abc"), "abc", "Leading WS and Chinese"},
 
-        // 3. 再次推进逻辑 (The "Jump" logic)
-        {acp_to_utf8("你好 a 再见"), "", "Two Chinese blocks separated by 'a'"},
-        {acp_to_utf8("你好 a 再见 b"), "b", "Two Chinese blocks, final stop at 'b'"},
-        {acp_to_utf8("  abc 你好 def"), "def", "Locked by 'abc', then re-activated by Chinese"},
-        {acp_to_utf8("你好  a   再见   "), "", "Multiple WS and multiple Chinese"},
+		// 3. 再次推进逻辑 (The "Jump" logic)
+		{acp_to_utf8("你好 a 再见"), "", "Two Chinese blocks separated by 'a'"},
+		{acp_to_utf8("你好 a 再见 b"), "b", "Two Chinese blocks, final stop at 'b'"},
+		{acp_to_utf8("  abc 你好 def"), "def", "Locked by 'abc', then re-activated by Chinese"},
+		{acp_to_utf8("你好  a   再见   "), "", "Multiple WS and multiple Chinese"},
 
-        // 4. 复杂 UTF-8 混合
-        {acp_to_utf8("你好 ") + wcs_to_utf8(L"\U0001F60A") + " abc",
-         wcs_to_utf8(L"\U0001F60A") + " abc",
-         "Chinese followed by Emoji (Emoji is 'Other')"},
-        {wcs_to_utf8(L"\U0001F60A") + acp_to_utf8(" 你好 abc"),
-         "abc",
-         "Leading Emoji, then Chinese should clear everything before it"}
-    };
+		// 4. 复杂 UTF-8 混合
+		{acp_to_utf8("你好 ") + wcs_to_utf8(L"\U0001F60A") + " abc",
+		wcs_to_utf8(L"\U0001F60A") + " abc",
+		"Chinese followed by Emoji (Emoji is 'Other')"},
+		{wcs_to_utf8(L"\U0001F60A") + acp_to_utf8(" 你好 abc"),
+		"abc",
+		"Leading Emoji, then Chinese should clear everything before it"}
+	};
 
-    int passed = 0;
-    std::string testResults;
+	int passed = 0;
+	std::string testResults;
 
-    for (auto& tc : cases) {
-        std::string target = tc.input;
-        RemoveUnnecessaryLeadingCharacters(target);
+	for (auto& tc : cases) {
+		const size_t offset = RemoveUnnecessaryLeadingCharacters(tc.input.data(), tc.input.size());
+		std::string_view result(tc.input.data() + offset, tc.input.size() - offset);
 
-        if (target == tc.expected) {
-            testResults += std::format("[PASS] {}\n", tc.desc);
-            passed++;
-        } else {
-            testResults += std::format(
-                "[FAIL] {}\n  Input:    [{}]\n  Expected: [{}]\n  Actual:   [{}]\n",
-                tc.desc, tc.input, tc.expected, target
-            );
-        }
-    }
+		if (result == tc.expected) {
+			testResults += std::format("[PASS] {}\n", tc.desc);
+			passed++;
+		} else {
+			testResults += std::format(
+				"[FAIL] {}\n  Input:    [{}]\n  Expected: [{}]\n  Actual:   [{}]\n",
+				tc.desc, tc.input, tc.expected, result
+			);
+		}
+	}
 
-    testResults += std::format("\nResult: {}/{} passed.\n", passed, cases.size());
-    return testResults;
+	testResults += std::format("\nResult: {}/{} passed.\n", passed, cases.size());
+	return testResults;
 }
 #pragma warning(pop)
 
 // 生成指定长度的随机混合字符串（包含中文、空格、字母、Emoji）
 std::string GenerateRandomString(size_t length) {
-    if (length == 0) return "";
+	if (length == 0) return "";
 
-    // 字符池：包含中文、字母、空格、Emoji
-    const std::vector<char32_t> char_pool = {
-        U'你', U'好', U'测', U'试', U'a', U'b', U'c', U' ', U'1', U'2',
-        U'😊', U'🔥', U'🚀', U'@', U'#', U'$'
-    };
+	// 字符池：包含中文、字母、空格、Emoji
+	const std::vector<char32_t> char_pool = {
+		U'你', U'好', U'测', U'试', U'a', U'b', U'c', U' ', U'1', U'2',
+		U'😊', U'🔥', U'🚀', U'@', U'#', U'$'
+	};
 
-    //std::random_device rd;
-    std::mt19937_64 gen(RANDOM_SEED);
-    std::uniform_int_distribution<size_t> dist(0, char_pool.size() - 1);
+	//std::random_device rd;
+	std::mt19937_64 gen(RANDOM_SEED);
+	std::uniform_int_distribution<size_t> dist(0, char_pool.size() - 1);
 
-    std::u32string u32_str;
-    for (size_t i = 0; i < length; ++i) {
-        u32_str += char_pool[dist(gen)];
-    }
+	std::u32string u32_str;
+	for (size_t i = 0; i < length; ++i) {
+		u32_str += char_pool[dist(gen)];
+	}
 
-    // 转换为 UTF-8 编码的 std::string
-    std::string utf8_str;
-    for (char32_t c : u32_str) {
-        if (c < 0x80) {
-            utf8_str += static_cast<char>(c);
-        } else if (c < 0x800) {
-            utf8_str += static_cast<char>(0xC0 | (c >> 6));
-            utf8_str += static_cast<char>(0x80 | (c & 0x3F));
-        } else if (c < 0x10000) {
-            utf8_str += static_cast<char>(0xE0 | (c >> 12));
-            utf8_str += static_cast<char>(0x80 | ((c >> 6) & 0x3F));
-            utf8_str += static_cast<char>(0x80 | (c & 0x3F));
-        } else if (c < 0x110000) {
-            utf8_str += static_cast<char>(0xF0 | (c >> 18));
-            utf8_str += static_cast<char>(0x80 | ((c >> 12) & 0x3F));
-            utf8_str += static_cast<char>(0x80 | ((c >> 6) & 0x3F));
-            utf8_str += static_cast<char>(0x80 | (c & 0x3F));
-        }
-    }
+	// 转换为 UTF-8 编码的 std::string
+	std::string utf8_str;
+	for (char32_t c : u32_str) {
+		if (c < 0x80) {
+			utf8_str += static_cast<char>(c);
+		} else if (c < 0x800) {
+			utf8_str += static_cast<char>(0xC0 | (c >> 6));
+			utf8_str += static_cast<char>(0x80 | (c & 0x3F));
+		} else if (c < 0x10000) {
+			utf8_str += static_cast<char>(0xE0 | (c >> 12));
+			utf8_str += static_cast<char>(0x80 | ((c >> 6) & 0x3F));
+			utf8_str += static_cast<char>(0x80 | (c & 0x3F));
+		} else if (c < 0x110000) {
+			utf8_str += static_cast<char>(0xF0 | (c >> 18));
+			utf8_str += static_cast<char>(0x80 | ((c >> 12) & 0x3F));
+			utf8_str += static_cast<char>(0x80 | ((c >> 6) & 0x3F));
+			utf8_str += static_cast<char>(0x80 | (c & 0x3F));
+		}
+	}
 
-    return utf8_str;
+	return utf8_str;
 }
 
 // 性能测试函数：跑300遍不同长度字符串，返回格式化的测试结果
 std::string RunTrimPerformanceTest(bool old) {
-    // 定义测试的字符串长度范围（300个不同长度，均匀分布在 0-10000 字符）
-    const int test_rounds = 1000;
-    std::vector<size_t> test_lengths;
-    for (int i = 0; i < test_rounds; ++i) {
-        // 长度范围：0 ~ 10000 字符（可根据需要调整）
-        test_lengths.push_back(static_cast<size_t>(i * 10000 / test_rounds));
-    }
+	// 定义测试的字符串长度范围（300个不同长度，均匀分布在 0-10000 字符）
+	const int test_rounds = 1000;
+	std::vector<size_t> test_lengths;
+	for (int i = 0; i < test_rounds; ++i) {
+		// 长度范围：0 ~ 10000 字符（可根据需要调整）
+		test_lengths.push_back(static_cast<size_t>(i * 10000 / test_rounds));
+	}
 
-    // 存储每轮测试的结果
-    std::vector<double> elapsed_times_ms;  // 每轮耗时（毫秒）
-    std::vector<size_t> processed_bytes;   // 每轮处理的字节数
-    std::vector<double> throughput_mb_s;   // 每轮吞吐量（MB/s）
+	// 存储每轮测试的结果
+	std::vector<double> elapsed_times_ms;  // 每轮耗时（毫秒）
+	std::vector<size_t> processed_bytes;   // 每轮处理的字节数
+	std::vector<double> throughput_mb_s;   // 每轮吞吐量（MB/s）
 
-    // 随机数生成器（确保每次测试字符串不同）
-    std::random_device rd;
-    std::mt19937 gen(rd());
+	// 随机数生成器（确保每次测试字符串不同）
+	std::random_device rd;
+	std::mt19937 gen(rd());
 
-    auto fn = old ? RemoveUnnecessaryLeadingCharacters_old: RemoveUnnecessaryLeadingCharacters;
-    // 执行300轮测试
-    for (size_t len : test_lengths) {
-        // 生成随机测试字符串
-        std::string test_str = GenerateRandomString(len);
-        size_t bytes = test_str.size();  // 实际处理的字节数
+	// 执行300轮测试
+	for (size_t len : test_lengths) {
+		// 生成随机测试字符串
+		std::string test_str = GenerateRandomString(len);
+		size_t bytes = test_str.size();  // 实际处理的字节数
 
-        // 计时开始
-        auto start = std::chrono::high_resolution_clock::now();
+		// 计时开始
+		auto start = std::chrono::high_resolution_clock::now();
 
-        // 执行核心处理函数
-        fn(test_str);
+		// 执行核心处理函数
+		if (old) {
+			RemoveUnnecessaryLeadingCharacters_old(test_str);
+		} else {
+			RemoveUnnecessaryLeadingCharacters(test_str.data(), test_str.size());
+		}
 
-        // 计时结束
-        auto end = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double, std::milli> elapsed = end - start;
-        double time_ms = elapsed.count();
+		// 计时结束
+		auto end = std::chrono::high_resolution_clock::now();
+		std::chrono::duration<double, std::milli> elapsed = end - start;
+		double time_ms = elapsed.count();
 
-        // 计算吞吐量：MB/s = (字节数 / 1024 / 1024) / (耗时 / 1000)
-        double throughput = (time_ms > 0) ? (bytes / 1024.0 / 1024.0) / (time_ms / 1000.0) : 0.0;
+		// 计算吞吐量：MB/s = (字节数 / 1024 / 1024) / (耗时 / 1000)
+		double throughput = (time_ms > 0) ? (bytes / 1024.0 / 1024.0) / (time_ms / 1000.0) : 0.0;
 
-        // 保存本轮结果
-        elapsed_times_ms.push_back(time_ms);
-        processed_bytes.push_back(bytes);
-        throughput_mb_s.push_back(throughput);
-    }
+		// 保存本轮结果
+		elapsed_times_ms.push_back(time_ms);
+		processed_bytes.push_back(bytes);
+		throughput_mb_s.push_back(throughput);
+	}
 
-    // 计算汇总统计
-    double total_time_ms = std::accumulate(elapsed_times_ms.begin(), elapsed_times_ms.end(), 0.0);
-    size_t total_bytes = std::accumulate(processed_bytes.begin(), processed_bytes.end(), (size_t)0);
-    double avg_throughput = (total_time_ms > 0) ? (total_bytes / 1024.0 / 1024.0) / (total_time_ms / 1000.0) : 0.0;
-    double max_throughput = *std::max_element(throughput_mb_s.begin()+1, throughput_mb_s.end());
-    double min_throughput = *std::min_element(throughput_mb_s.begin()+1, throughput_mb_s.end());
+	// 计算汇总统计
+	double total_time_ms = std::accumulate(elapsed_times_ms.begin(), elapsed_times_ms.end(), 0.0);
+	size_t total_bytes = std::accumulate(processed_bytes.begin(), processed_bytes.end(), (size_t)0);
+	double avg_throughput = (total_time_ms > 0) ? (total_bytes / 1024.0 / 1024.0) / (total_time_ms / 1000.0) : 0.0;
+	double max_throughput = *std::max_element(throughput_mb_s.begin()+1, throughput_mb_s.end());
+	double min_throughput = *std::min_element(throughput_mb_s.begin()+1, throughput_mb_s.end());
 
-    // 格式化测试结果（使用std::format，便于修改排版）
-    std::string result;
-    result += std::format("=== 性能测试报告 ===\n");
-    result += std::format("测试轮数: {}\n", test_rounds);
-    result += std::format("字符串长度范围: 0 ~ {} 字符\n", test_lengths.back());
-    result += std::format("总处理耗时: {:.6f} 毫秒\n", total_time_ms);
-    result += std::format("总处理字节数: {} 字节 ({:.2f} MB)\n", total_bytes, total_bytes / 1024.0 / 1024.0);
-    result += std::format("\n=== 吞吐量统计 ===\n");
-    result += std::format("平均吞吐量: {:.2f} MB/s\n", avg_throughput);
-    result += std::format("最大吞吐量: {:.2f} MB/s\n", max_throughput);
-    result += std::format("最小吞吐量: {:.2f} MB/s\n", min_throughput);
+	// 格式化测试结果（使用std::format，便于修改排版）
+	std::string result;
+	result += std::format("=== 性能测试报告 ===\n");
+	result += std::format("测试轮数: {}\n", test_rounds);
+	result += std::format("字符串长度范围: 0 ~ {} 字符\n", test_lengths.back());
+	result += std::format("总处理耗时: {:.6f} 毫秒\n", total_time_ms);
+	result += std::format("总处理字节数: {} 字节 ({:.2f} MB)\n", total_bytes, total_bytes / 1024.0 / 1024.0);
+	result += std::format("\n=== 吞吐量统计 ===\n");
+	result += std::format("平均吞吐量: {:.2f} MB/s\n", avg_throughput);
+	result += std::format("最大吞吐量: {:.2f} MB/s\n", max_throughput);
+	result += std::format("最小吞吐量: {:.2f} MB/s\n", min_throughput);
 
-    // 可选：输出每轮详细数据（如需精简可注释）
-    result += std::format("\n=== 每轮详细数据（前10轮示例）===\n");
-    result += std::format("{:<10} {:<15} {:<15} {:<15}\n", "长度(字符)", "耗时(ms)", "字节数", "吞吐量(MB/s)");
-    for (int i = 1; i < std::min(10, test_rounds); ++i) {
-        result += std::format("{:<10} {:<15.6f} {:<15} {:<15.2f}\n",
-                             test_lengths[i],
-                             elapsed_times_ms[i],
-                             processed_bytes[i],
-                             throughput_mb_s[i]);
-    }
+	// 可选：输出每轮详细数据（如需精简可注释）
+	result += std::format("\n=== 每轮详细数据（前10轮示例）===\n");
+	result += std::format("{:<10} {:<15} {:<15} {:<15}\n", "长度(字符)", "耗时(ms)", "字节数", "吞吐量(MB/s)");
+	for (int i = 1; i < std::min(10, test_rounds); ++i) {
+		result += std::format("{:<10} {:<15.6f} {:<15} {:<15.2f}\n",
+							test_lengths[i],
+							elapsed_times_ms[i],
+							processed_bytes[i],
+							throughput_mb_s[i]);
+	}
 
-    return result;
+	return result;
 }
 
 std::string RunValidationBenchmark() {

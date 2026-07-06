@@ -1716,7 +1716,7 @@ BEGIN
     IDS_READONLY_FILE       "(Plik tylko do odczytu)"
     IDS_READONLY_MODE       "(Tryb tylko do odczytu)"
                             // Line, Column, Character, Selected, Selected Line, Find
-    IDS_STATUSITEM_FORMAT   "Wie. %s / %s \nKol. %s / %s \nZnak %s / %s \nZazn. %s / %s \nZaznWie. %s \nZnal. %s "
+    IDS_STATUSITEM_FORMAT   "Wie. %s / %s \nKol. %s / %s \nZnak %s / %s \nZazn. %s / %s \nZaznWie. %s \nZnal. %s \nOblicz %s "
     IDS_ZERO_LENGTH_MATCH   "^ Dopasowanie o zerowej długości"
     IDS_LOADFILE            "Ładowanie ""%s""..."
     IDS_SAVEFILE            "Zapisywanie ""%s""..."
@@ -2129,9 +2129,3 @@ END
 #include "../../src/Notepad4.ver"
 /////////////////////////////////////////////////////////////////////////////
 #endif    // not APSTUDIO_INVOKED
-
-
-
-
-
-

@@ -326,7 +326,6 @@ static HMODULE hResDLL;
 LANGID uiLanguage;
 static UINT languageMenu;
 #endif
-bool bEnableExtendExpr = true;
 
 //=============================================================================
 //
@@ -4724,12 +4723,18 @@ LRESULT MsgNotify(HWND hwnd, WPARAM wParam, LPARAM lParam) {
 					if (IsSelCharCountLangActive(languageMenu)) {
 						StartSelCharCountAsync(hwndMain);
 					}
+
+					UpdateEvalFromUI(scn->updated);
 				} else if (scn->updated & SC_UPDATE_CONTENT) {
 					// cachedStatusItem.updateMask is already set in SCN_MODIFIED.
 					if (editMarkAll.matchCount) {
 						editMarkAll.MarkAll(TRUE, bMarkOccurrences);
 					}
+
+					UpdateEvalFromUI(scn->updated);
 				}
+				// 求值结果可能在 UpdateEvalFromUI 中被更新，始终刷新 Eval 面板
+				cachedStatusItem.updateMask |= (1 << StatusItem_Eval);
 				if (cachedStatusItem.updateMask) {
 					UpdateStatusbar();
 				}
@@ -5079,6 +5084,12 @@ LRESULT MsgNotify(HWND hwnd, WPARAM wParam, LPARAM lParam) {
 				SendWMCommand(hwnd, IDM_EDIT_FIND);
 				return TRUE;
 
+			case StatusItem_Eval:
+				if (g_wchEvalResult[0]) {
+					SetClipData(hwnd, g_wchEvalResult);
+				}
+				return TRUE;
+
 			case StatusItem_Encoding:
 				SendWMCommand(hwnd, IDM_ENCODING_SELECT);
 				return TRUE;
@@ -5425,6 +5436,9 @@ void LoadSettings() noexcept {
 
 	// Scintilla Styles
 	Style_Load();
+
+	// Extend Expression 配置（从 [Extend Expression] 节加载）
+	LoadExtendExprSettings();
 }
 
 void SaveSettingsNow(bool bOnlySaveStyle, bool bQuiet) noexcept {
@@ -6617,10 +6631,23 @@ void UpdateStatusbar() noexcept {
 		StrFormatByteSize(iBytes, tchDocSize, COUNTOF(tchDocSize));
 	}
 
+	// 求值结果显示
+	bool bShowEval = bEnableExtendExpr && (bJITEval || bSelEval);
+	WCHAR tchEvalDisp[64];
+	if (g_wchEvalResult[0] && bShowEval) {
+		wcscpy(tchEvalDisp, g_wchEvalResult);
+	} else if (bShowEval) {
+		// 无有效求值结果时显示占位符
+		wcscpy(tchEvalDisp, L"---");
+	} else {
+		tchEvalDisp[0] = L'\0';
+	}
+
 	WCHAR itemText[256];
 	const int len = wsprintf(itemText, cachedStatusItem.tchItemFormat, tchCurLine, tchDocLine,
 		tchCurColumn, tchLineColumn, tchCurChar, tchLineChar,
-		tchSelChar, tchSelByte, tchLinesSelected, tchMatchesCount);
+		tchSelChar, tchSelByte, tchLinesSelected, tchMatchesCount,
+		tchEvalDisp);
 
 	LPCWSTR items[StatusItem_ItemCount];
 	memset(AsVoidPointer(items), 0, StatusItem_Lexer * sizeof(LPCWSTR));
@@ -6632,13 +6659,18 @@ void UpdateStatusbar() noexcept {
 			items[index] = start;
 			start = itemText + i + 1;
 			index += 1;
-			if (index == StatusItem_Find) {
+			if (index == StatusItem_Empty) {
 				break;
 			}
 		}
 	}
 
 	items[index] = start;
+
+	// 当 Eval 栏隐藏时，覆写为空字符串，并独立设置宽度为零
+	if (!bShowEval) {
+		items[StatusItem_Eval] = L"";
+	}
 
 	// 异步字数统计结果有效时，覆盖 StatusItem_Selection 区域
 	if (IsSelCharCountLangActive(languageMenu)
@@ -6664,12 +6696,17 @@ void UpdateStatusbar() noexcept {
 	for (int i = 0; i < StatusItem_ItemCount; i++) {
 		int width;
 		if (updateMask & 1) {
+			if (!bShowEval && i == StatusItem_Eval) {
+				width = 0;
+				cachedWidth[i] = 0;
+			} else {
 			SIZE size;
 			LPCWSTR lpsz = items[i];
 			//GetTextExtentPoint32(hdc, lpsz, lstrlen(lpsz), &size);
 			GetTextExtentExPoint(hdc, lpsz, lstrlen(lpsz), 0, nullptr, nullptr, &size);
 			width = NP2_align_up(size.cx + size.cy/2U, 8);
 			cachedWidth[i] = width;
+			}
 		} else {
 			width = cachedWidth[i];
 			items[i] = nullptr;

@@ -1716,7 +1716,7 @@ BEGIN
     IDS_READONLY_FILE       "(唯讀檔案)"
     IDS_READONLY_MODE       "(唯讀模式)"
                             // Line, Column, Character, Selected, Selected Line, Find
-    IDS_STATUSITEM_FORMAT   "行 %s / %s \n欄 %s / %s \n文字 %s / %s \n選擇 %s / %s \n已選行 %s \n找到 %s "
+    IDS_STATUSITEM_FORMAT   "行 %s / %s \n欄 %s / %s \n文字 %s / %s \n選擇 %s / %s \n已選行 %s \n找到 %s \n求値 %s "
     IDS_ZERO_LENGTH_MATCH   "^ 零寬度符合"
     IDS_LOADFILE            "正在載入「%s」..."
     IDS_SAVEFILE            "正在儲存「%s」..."
@@ -2129,4 +2129,3 @@ END
 #include "../../src/Notepad4.ver"
 /////////////////////////////////////////////////////////////////////////////
 #endif    // not APSTUDIO_INVOKED
-

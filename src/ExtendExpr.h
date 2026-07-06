@@ -4,7 +4,7 @@
 #include <cstddef>
 
 bool CallExtendExpr(bool bShiftDown, bool noEnter);
-std::string& RemoveUnnecessaryLeadingCharacters(std::string& str) noexcept;
+size_t RemoveUnnecessaryLeadingCharacters(const char* utf8Text, size_t length) noexcept;
 std::string RunTests();
 std::string RunValidationBenchmark();
 std::string RunPerformanceTest();
@@ -35,3 +35,28 @@ struct SelCharCountResult {
 };
 
 extern SelCharCountResult g_selCharCountResult;
+
+//=============================================================================
+//
+// 状态栏求值（Eval）：根据键盘输入或选中文本计算表达式
+//
+//=============================================================================
+
+// 求值结果缓冲区（主线程使用，无需原子操作）
+extern wchar_t g_wchEvalResult[64];
+
+//=============================================================================
+//
+// INI 配置变量（从 Notepad4.ini 的 [Extend Expression] 节加载）
+//
+//=============================================================================
+extern bool		bEnableExtendExpr;		// 主功能开关
+extern bool		bJITEval;				// JIT 求值开关
+extern bool		bSelEval;				// 选区求值开关
+extern int		nSignificantDigits;		// 输出有效数字位数（对应 G 格式的精度）
+void LoadExtendExprSettings() noexcept;
+
+// 在 SCN_UPDATEUI 中统一调用（仅一行），根据 updated 标志自动选择：
+//   SC_UPDATE_CONTENT   → 若最后输入的字符是数字/')'，从光标到行首求值
+//   SC_UPDATE_SELECTION → 若有选中文本，直接尝试一次 tecpp_expr
+void UpdateEvalFromUI(unsigned int updated) noexcept;
